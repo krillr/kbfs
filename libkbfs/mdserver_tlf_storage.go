@@ -344,7 +344,7 @@ func (s *mdServerTlfStorage) put(
 		}
 	}
 
-	bid := rmds.MD.BID
+	bid := rmds.MD.BID()
 	mStatus := rmds.MD.MergedStatus()
 
 	head, err := s.getHeadForTLFReadLocked(bid)

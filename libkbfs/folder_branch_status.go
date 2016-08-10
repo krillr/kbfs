@@ -162,16 +162,16 @@ func (fbsk *folderBranchStatusKeeper) getStatus(ctx context.Context) (
 	var fbs FolderBranchStatus
 
 	if fbsk.md != (ImmutableRootMetadata{}) {
-		fbs.Staged = (fbsk.md.WFlags & MetadataFlagUnmerged) != 0
-		name, err := fbsk.config.KBPKI().GetNormalizedUsername(ctx, fbsk.md.LastModifyingWriter)
+		fbs.Staged = fbsk.md.IsUnmergedSet()
+		name, err := fbsk.config.KBPKI().GetNormalizedUsername(ctx, fbsk.md.LastModifyingWriter())
 		if err != nil {
 			return FolderBranchStatus{}, nil, err
 		}
 		fbs.HeadWriter = name
-		fbs.DiskUsage = fbsk.md.DiskUsage
-		fbs.RekeyPending = fbsk.config.RekeyQueue().IsRekeyPending(fbsk.md.ID)
-		fbs.FolderID = fbsk.md.ID.String()
-		fbs.Revision = fbsk.md.Revision
+		fbs.DiskUsage = fbsk.md.DiskUsage()
+		fbs.RekeyPending = fbsk.config.RekeyQueue().IsRekeyPending(fbsk.md.ID())
+		fbs.FolderID = fbsk.md.ID().String()
+		fbs.Revision = fbsk.md.Revision()
 	}
 
 	fbs.DirtyPaths = fbsk.convertNodesToPathsLocked(fbsk.dirtyNodes)

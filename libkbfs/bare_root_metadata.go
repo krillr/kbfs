@@ -360,22 +360,22 @@ func (md *BareRootMetadata) CheckValidSuccessor(
 	}
 
 	// (5) Check branch ID.
-	if md.MergedStatus() == nextMd.MergedStatus() && md.BID != nextMd.BID {
+	if md.MergedStatus() == nextMd.MergedStatus() && md.BID() != nextMd.BID() {
 		return fmt.Errorf("Unexpected branch ID on successor: %s vs. %s",
-			md.BID, nextMd.BID)
+			md.BID(), nextMd.BID())
 	} else if md.MergedStatus() == Unmerged && nextMd.MergedStatus() == Merged {
 		return errors.New("Merged MD can't follow unmerged MD.")
 	}
 
 	// (6) Check disk usage.
-	expectedUsage := md.DiskUsage
+	expectedUsage := md.DiskUsage()
 	if !nextMd.IsWriterMetadataCopiedSet() {
-		expectedUsage += nextMd.RefBytes - nextMd.UnrefBytes
+		expectedUsage += nextMd.RefBytes() - nextMd.UnrefBytes()
 	}
-	if nextMd.DiskUsage != expectedUsage {
+	if nextMd.DiskUsage() != expectedUsage {
 		return MDDiskUsageMismatch{
 			expectedDiskUsage: expectedUsage,
-			actualDiskUsage:   nextMd.DiskUsage,
+			actualDiskUsage:   nextMd.DiskUsage(),
 		}
 	}
 
@@ -649,7 +649,7 @@ func (md *BareRootMetadata) IsValidAndSigned(
 		return errors.New("No private metadata")
 	}
 
-	if (md.MergedStatus() == Merged) != (md.BID == NullBranchID) {
+	if (md.MergedStatus() == Merged) != (md.BID() == NullBranchID) {
 		return errors.New("Branch ID doesn't match merged status")
 	}
 
@@ -658,7 +658,7 @@ func (md *BareRootMetadata) IsValidAndSigned(
 		return err
 	}
 
-	writer := md.LastModifyingWriter
+	writer := md.LastModifyingWriter()
 
 	// Make sure the last writer is valid.
 	if !handle.IsWriter(writer) {
@@ -687,4 +687,191 @@ func (md *BareRootMetadata) IsValidAndSigned(
 	}
 
 	return nil
+}
+
+// LastModifyingWriter ...
+func (md *BareRootMetadata) LastModifyingWriter() keybase1.UID {
+	return md.WriterMetadata.LastModifyingWriter
+}
+
+// RefBytes ...
+func (md *BareRootMetadata) RefBytes() uint64 {
+	return md.WriterMetadata.RefBytes
+}
+
+// UnrefBytes ...
+func (md *BareRootMetadata) UnrefBytes() uint64 {
+	return md.WriterMetadata.UnrefBytes
+}
+
+// DiskUsage ...
+func (md *BareRootMetadata) DiskUsage() uint64 {
+	return md.WriterMetadata.DiskUsage
+}
+
+// SetRefBytes ...
+func (md *BareRootMetadata) SetRefBytes(refBytes uint64) {
+	md.WriterMetadata.RefBytes = refBytes
+}
+
+// SetUnrefBytes ...
+func (md *BareRootMetadata) SetUnrefBytes(unrefBytes uint64) {
+	md.WriterMetadata.UnrefBytes = unrefBytes
+}
+
+// SetDiskUsage ...
+func (md *BareRootMetadata) SetDiskUsage(diskUsage uint64) {
+	md.WriterMetadata.DiskUsage = diskUsage
+}
+
+// AddRefBytes ...
+func (md *BareRootMetadata) AddRefBytes(refBytes uint64) {
+	md.WriterMetadata.RefBytes += refBytes
+}
+
+// AddUnrefBytes ...
+func (md *BareRootMetadata) AddUnrefBytes(unrefBytes uint64) {
+	md.WriterMetadata.UnrefBytes += unrefBytes
+}
+
+// AddDiskUsage ...
+func (md *BareRootMetadata) AddDiskUsage(diskUsage uint64) {
+	md.WriterMetadata.DiskUsage += diskUsage
+}
+
+// RevisionNumber ...
+func (md *BareRootMetadata) RevisionNumber() MetadataRevision {
+	return md.Revision
+}
+
+// BID ...
+func (md *BareRootMetadata) BID() BranchID {
+	return md.WriterMetadata.BID
+}
+
+// GetPrevRoot ...
+func (md *BareRootMetadata) GetPrevRoot() MdID {
+	return md.PrevRoot
+}
+
+// ClearRekeyBit ...
+func (md *BareRootMetadata) ClearRekeyBit() {
+	md.Flags &= ^MetadataFlagRekey
+}
+
+// ClearWriterMetadataCopiedBit ...
+func (md *BareRootMetadata) ClearWriterMetadataCopiedBit() {
+	md.Flags &= ^MetadataFlagWriterMetadataCopied
+}
+
+// IsUnmergedSet ...
+func (md *BareRootMetadata) IsUnmergedSet() bool {
+	return (md.WriterMetadata.WFlags & MetadataFlagUnmerged) != 0
+}
+
+// SetUnmerged ...
+func (md *BareRootMetadata) SetUnmerged() {
+	md.WriterMetadata.WFlags |= MetadataFlagUnmerged
+}
+
+// SetBranchID ...
+func (md *BareRootMetadata) SetBranchID(bid BranchID) {
+	md.WriterMetadata.BID = bid
+}
+
+// SetPrevRoot ...
+func (md *BareRootMetadata) SetPrevRoot(mdID MdID) {
+	md.PrevRoot = mdID
+}
+
+// GetSerializedPrivateMetadata ...
+func (md *BareRootMetadata) GetSerializedPrivateMetadata() []byte {
+	return md.SerializedPrivateMetadata
+}
+
+// SetSerializedPrivateMetadata ...
+func (md *BareRootMetadata) SetSerializedPrivateMetadata(spmd []byte) {
+	md.SerializedPrivateMetadata = spmd
+}
+
+// GetSerializedWriterMetadata ...
+func (md *BareRootMetadata) GetSerializedWriterMetadata(codec Codec) ([]byte, error) {
+	return codec.Encode(md.WriterMetadata)
+}
+
+// GetWriterMetadataSigInfo ...
+func (md *BareRootMetadata) GetWriterMetadataSigInfo() SignatureInfo {
+	return md.WriterMetadataSigInfo
+}
+
+// SetWriterMetadataSigInfo ...
+func (md *BareRootMetadata) SetWriterMetadataSigInfo(sigInfo SignatureInfo) {
+	md.WriterMetadataSigInfo = sigInfo
+}
+
+// SetLastModifyingWriter ...
+func (md *BareRootMetadata) SetLastModifyingWriter(user keybase1.UID) {
+	md.WriterMetadata.LastModifyingWriter = user
+}
+
+// SetLastModifyingUser ...
+func (md *BareRootMetadata) SetLastModifyingUser(user keybase1.UID) {
+	md.LastModifyingUser = user
+}
+
+// SetRekeyBit ...
+func (md *BareRootMetadata) SetRekeyBit() {
+	md.Flags |= MetadataFlagRekey
+}
+
+// SetFinalBit ...
+func (md *BareRootMetadata) SetFinalBit() {
+	md.Flags |= MetadataFlagFinal
+}
+
+// SetWriterMetadataCopiedBit ...
+func (md *BareRootMetadata) SetWriterMetadataCopiedBit() {
+	md.Flags |= MetadataFlagWriterMetadataCopied
+}
+
+// SetRevision ...
+func (md *BareRootMetadata) SetRevision(revision MetadataRevision) {
+	md.Revision = revision
+}
+
+// AddNewKeys ...
+func (md *BareRootMetadata) AddNewKeys(
+	wkb TLFWriterKeyBundle, rkb TLFReaderKeyBundle) {
+	md.WKeys = append(md.WKeys, wkb)
+	md.RKeys = append(md.RKeys, rkb)
+}
+
+// SetUnresolvedReaders ...
+func (md *BareRootMetadata) SetUnresolvedReaders(readers []keybase1.SocialAssertion) {
+	md.UnresolvedReaders = readers
+}
+
+// SetUnresolvedWriters ...
+func (md *BareRootMetadata) SetUnresolvedWriters(writers []keybase1.SocialAssertion) {
+	md.Extra.UnresolvedWriters = writers
+}
+
+// SetConflictInfo ...
+func (md *BareRootMetadata) SetConflictInfo(ci *TlfHandleExtension) {
+	md.ConflictInfo = ci
+}
+
+// SetFinalizedInfo ...
+func (md *BareRootMetadata) SetFinalizedInfo(fi *TlfHandleExtension) {
+	md.FinalizedInfo = fi
+}
+
+// SetWriters ...
+func (md *BareRootMetadata) SetWriters(writers []keybase1.UID) {
+	md.Writers = writers
+}
+
+// SetTlfID ...
+func (md *BareRootMetadata) SetTlfID(tlf TlfID) {
+	md.ID = tlf
 }

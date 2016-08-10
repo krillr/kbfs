@@ -125,7 +125,7 @@ func getMDRange(ctx context.Context, config Config, id TlfID, bid BranchID,
 		}
 
 		for _, rmd := range fetchedRmds {
-			slot := int(rmd.Revision - start)
+			slot := int(rmd.Revision() - start)
 			if slot < minSlot {
 				minSlot = slot
 			}
@@ -137,7 +137,7 @@ func getMDRange(ctx context.Context, config Config, id TlfID, bid BranchID,
 
 			if err := mdcache.Put(rmd); err != nil {
 				config.MakeLogger("").CDebugf(ctx, "Error putting md "+
-					"%d into the cache: %v", rmd.Revision, err)
+					"%d into the cache: %v", rmd.Revision(), err)
 			}
 		}
 	}
@@ -259,7 +259,7 @@ func getUnmergedMDUpdates(ctx context.Context, config Config, id TlfID,
 
 		// on the next iteration, start apply the previous root
 		if numNew > 0 {
-			currHead = rmds[0].Revision - 1
+			currHead = rmds[0].Revision() - 1
 		}
 		if currHead < MetadataRevisionInitial {
 			return MetadataRevisionUninitialized, nil,
@@ -289,14 +289,14 @@ func encryptMDPrivateData(
 		return nil, err
 	}
 
-	brmd := rmd.BareRootMetadata
+	brmd := rmd.bareMd
 	privateData := &rmd.data
 
-	if brmd.ID.IsPublic() || !brmd.IsWriterMetadataCopiedSet() {
+	if brmd.TlfID().IsPublic() || !brmd.IsWriterMetadataCopiedSet() {
 		// Record the last writer to modify this writer metadata
-		brmd.LastModifyingWriter = me
+		brmd.SetLastModifyingWriter(me)
 
-		if brmd.ID.IsPublic() {
+		if brmd.TlfID().IsPublic() {
 			// Encode the private metadata
 			encodedPrivateMetadata, err := codec.Encode(privateData)
 			if err != nil {
@@ -367,14 +367,14 @@ func decryptMDPrivateData(ctx context.Context, config Config,
 	codec := config.Codec()
 
 	if handle.IsPublic() {
-		if err := codec.Decode(rmdToDecrypt.SerializedPrivateMetadata,
+		if err := codec.Decode(rmdToDecrypt.GetSerializedPrivateMetadata(),
 			&rmdToDecrypt.data); err != nil {
 			return err
 		}
 	} else {
 		// decrypt the root data for non-public directories
 		var encryptedPrivateMetadata EncryptedPrivateMetadata
-		if err := codec.Decode(rmdToDecrypt.SerializedPrivateMetadata,
+		if err := codec.Decode(rmdToDecrypt.GetSerializedPrivateMetadata(),
 			&encryptedPrivateMetadata); err != nil {
 			return err
 		}
@@ -423,7 +423,7 @@ func decryptMDPrivateData(ctx context.Context, config Config,
 				return err
 			}
 			if err := config.BlockCache().Put(info.BlockPointer,
-				rmdToDecrypt.ID, block, TransientEntry); err != nil {
+				rmdToDecrypt.ID(), block, TransientEntry); err != nil {
 				return err
 			}
 		}

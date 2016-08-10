@@ -69,11 +69,11 @@ func makeMDForTest(t *testing.T, id TlfID, h BareTlfHandle,
 	revision MetadataRevision, uid keybase1.UID,
 	prevRoot MdID) *RootMetadata {
 	var md RootMetadata
-	err := updateNewBareRootMetadata(&md.BareRootMetadata, id, h)
+	err := updateNewBareRootMetadata(&md.bareMd, id, h)
 	require.NoError(t, err)
-	md.Revision = revision
-	FakeInitialRekey(&md.BareRootMetadata, h)
-	md.PrevRoot = prevRoot
+	md.SetRevision(revision)
+	FakeInitialRekey(&md.bareMd, h)
+	md.SetPrevRoot(prevRoot)
 	return &md
 }
 
@@ -168,12 +168,12 @@ func TestMDJournalBranchConversion(t *testing.T) {
 	err = ibrmds[0].IsValidAndSigned(codec, crypto, uid, verifyingKey)
 	require.NoError(t, err)
 
-	bid := ibrmds[0].BID
+	bid := ibrmds[0].BID()
 	require.NotEqual(t, NullBranchID, bid)
 
 	for i := 1; i < len(ibrmds); i++ {
 		require.Equal(t, Unmerged, ibrmds[i].MergedStatus())
-		require.Equal(t, bid, ibrmds[i].BID)
+		require.Equal(t, bid, ibrmds[i].BID())
 		err := ibrmds[i].IsValidAndSigned(
 			codec, crypto, uid, verifyingKey)
 		require.NoError(t, err)
@@ -295,7 +295,7 @@ func TestMDJournalFlushConflict(t *testing.T) {
 		_, err = j.put(ctx, signer, ekg, md, uid, verifyingKey)
 		require.IsType(t, MDJournalConflictError{}, err)
 
-		md.WFlags |= MetadataFlagUnmerged
+		md.SetUnmerged()
 		mdID, err := j.put(ctx, signer, ekg, md, uid, verifyingKey)
 		require.NoError(t, err)
 		prevRoot = mdID
@@ -304,7 +304,7 @@ func TestMDJournalFlushConflict(t *testing.T) {
 	for i := mdCount/2 + 1; i < mdCount; i++ {
 		revision := firstRevision + MetadataRevision(i)
 		md := makeMDForTest(t, id, h, revision, uid, prevRoot)
-		md.WFlags |= MetadataFlagUnmerged
+		md.SetUnmerged()
 		mdID, err := j.put(ctx, signer, ekg, md, uid, verifyingKey)
 		require.NoError(t, err)
 		prevRoot = mdID
@@ -333,12 +333,12 @@ func TestMDJournalFlushConflict(t *testing.T) {
 	err = rmdses[0].IsValidAndSigned(codec, crypto, uid, verifyingKey)
 	require.NoError(t, err)
 
-	bid := rmdses[0].MD.BID
+	bid := rmdses[0].MD.BID()
 	require.NotEqual(t, NullBranchID, bid)
 
 	for i := 1; i < len(rmdses); i++ {
 		require.Equal(t, Unmerged, rmdses[i].MD.MergedStatus())
-		require.Equal(t, bid, rmdses[i].MD.BID)
+		require.Equal(t, bid, rmdses[i].MD.BID())
 		err := rmdses[i].IsValidAndSigned(
 			codec, crypto, uid, verifyingKey)
 		require.NoError(t, err)
@@ -396,7 +396,7 @@ func TestMDJournalPreservesBranchID(t *testing.T) {
 		mdID, err := j.put(ctx, signer, ekg, md, uid, verifyingKey)
 		require.IsType(t, MDJournalConflictError{}, err)
 
-		md.WFlags |= MetadataFlagUnmerged
+		md.SetUnmerged()
 		mdID, err = j.put(ctx, signer, ekg, md, uid, verifyingKey)
 		require.NoError(t, err)
 		prevRoot = mdID
@@ -425,12 +425,12 @@ func TestMDJournalPreservesBranchID(t *testing.T) {
 	err = rmdses[0].IsValidAndSigned(codec, crypto, uid, verifyingKey)
 	require.NoError(t, err)
 
-	bid := rmdses[0].MD.BID
+	bid := rmdses[0].MD.BID()
 	require.NotEqual(t, NullBranchID, bid)
 
 	for i := 1; i < len(rmdses); i++ {
 		require.Equal(t, Unmerged, rmdses[i].MD.MergedStatus())
-		require.Equal(t, bid, rmdses[i].MD.BID)
+		require.Equal(t, bid, rmdses[i].MD.BID())
 		err := rmdses[i].IsValidAndSigned(
 			codec, crypto, uid, verifyingKey)
 		require.NoError(t, err)

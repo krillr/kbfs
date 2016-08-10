@@ -360,7 +360,7 @@ func (md *MDServerMemory) Put(ctx context.Context, rmds *RootMetadataSigned) err
 		}
 	}
 
-	bid := rmds.MD.BID
+	bid := rmds.MD.BID()
 	mStatus := rmds.MD.MergedStatus()
 
 	head, err := md.getHeadForTLF(ctx, id, bid, mStatus)
@@ -372,7 +372,7 @@ func (md *MDServerMemory) Put(ctx context.Context, rmds *RootMetadataSigned) err
 
 	if mStatus == Unmerged && head == nil {
 		// currHead for unmerged history might be on the main branch
-		prevRev := rmds.MD.Revision - 1
+		prevRev := rmds.MD.RevisionNumber() - 1
 		rmdses, err := md.GetRange(ctx, id, NullBranchID, Merged, prevRev, prevRev)
 		if err != nil {
 			return MDServerError{err}

@@ -521,7 +521,7 @@ func (fbo *folderBranchOps) setHeadLocked(
 		}
 	}
 
-	fbo.log.CDebugf(ctx, "Setting head revision to %d", md.Revision)
+	fbo.log.CDebugf(ctx, "Setting head revision to %d", md.Revision())
 	err := fbo.config.MDCache().Put(md)
 	if err != nil {
 		return err
@@ -531,14 +531,14 @@ func (fbo *folderBranchOps) setHeadLocked(
 	// operating on unmerged data, initialize the state properly and
 	// kick off conflict resolution.
 	if isFirstHead && md.MergedStatus() == Unmerged {
-		fbo.setBranchIDLocked(lState, md.BID)
+		fbo.setBranchIDLocked(lState, md.BID())
 		// Use uninitialized for the merged branch; the unmerged
 		// revision is enough to trigger conflict resolution.
-		fbo.cr.Resolve(md.Revision, MetadataRevisionUninitialized)
+		fbo.cr.Resolve(md.Revision(), MetadataRevisionUninitialized)
 	} else if md.MergedStatus() == Merged {
 		// If we are already merged through this write, the revision would be the
 		// latestMergedRevision on server.
-		fbo.setLatestMergedRevisionLocked(ctx, lState, md.Revision, false)
+		fbo.setLatestMergedRevisionLocked(ctx, lState, md.Revision(), false)
 	}
 
 	fbo.head = md
@@ -556,7 +556,7 @@ func (fbo *folderBranchOps) setHeadLocked(
 		// Let any listeners know that this folder is now readable,
 		// which may indicate that a rekey successfully took place.
 		fbo.config.Reporter().Notify(ctx, mdReadSuccessNotification(
-			md.GetTlfHandle().GetCanonicalName(), md.ID.IsPublic()))
+			md.GetTlfHandle().GetCanonicalName(), md.ID().IsPublic()))
 	}
 	return nil
 }
@@ -582,8 +582,8 @@ func (fbo *folderBranchOps) setNewInitialHeadLocked(ctx context.Context,
 	if fbo.head != (ImmutableRootMetadata{}) {
 		return errors.New("Unexpected non-nil head in setNewInitialHeadLocked")
 	}
-	if md.Revision != MetadataRevisionInitial {
-		return fmt.Errorf("setNewInitialHeadLocked unexpectedly called with revision %d", md.Revision)
+	if md.Revision() != MetadataRevisionInitial {
+		return fmt.Errorf("setNewInitialHeadLocked unexpectedly called with revision %d", md.Revision())
 	}
 	return fbo.setHeadLocked(ctx, lState, md)
 }
@@ -676,8 +676,8 @@ func (fbo *folderBranchOps) setHeadPredecessorLocked(ctx context.Context,
 	if fbo.head == (ImmutableRootMetadata{}) {
 		return errors.New("Unexpected nil head in setHeadPredecessorLocked")
 	}
-	if fbo.head.Revision <= MetadataRevisionInitial {
-		return fmt.Errorf("setHeadPredecessorLocked unexpectedly called with revision %d", fbo.head.Revision)
+	if fbo.head.Revision() <= MetadataRevisionInitial {
+		return fmt.Errorf("setHeadPredecessorLocked unexpectedly called with revision %d", fbo.head.Revision())
 	}
 
 	if fbo.head.MergedStatus() != Unmerged {
@@ -809,7 +809,7 @@ func (fbo *folderBranchOps) getMDLocked(
 			// We don't need to do this for merged head
 			// because the setHeadLocked() already does
 			// that anyway.
-			fbo.setLatestMergedRevisionLocked(ctx, lState, mergedMD.Revision, false)
+			fbo.setLatestMergedRevisionLocked(ctx, lState, mergedMD.Revision(), false)
 		}()
 	}
 
@@ -833,7 +833,7 @@ func (fbo *folderBranchOps) getMDForReadHelper(
 	if err != nil {
 		return ImmutableRootMetadata{}, err
 	}
-	if !md.ID.IsPublic() {
+	if !md.ID().IsPublic() {
 		username, uid, err := fbo.config.KBPKI().GetCurrentUserInfo(ctx)
 		if err != nil {
 			return ImmutableRootMetadata{}, err
@@ -966,7 +966,7 @@ func (fbo *folderBranchOps) initMDLocked(
 
 	var expectedKeyGen KeyGen
 	var tlfCryptKey *TLFCryptKey
-	if md.ID.IsPublic() {
+	if md.ID().IsPublic() {
 		expectedKeyGen = PublicKeyGen
 	} else {
 		var rekeyDone bool
@@ -976,13 +976,13 @@ func (fbo *folderBranchOps) initMDLocked(
 			return err
 		}
 		if !rekeyDone {
-			return fmt.Errorf("Initial rekey unexpectedly not done for private TLF %v", md.ID)
+			return fmt.Errorf("Initial rekey unexpectedly not done for private TLF %v", md.ID())
 		}
 		expectedKeyGen = FirstValidKeyGen
 	}
 	keyGen := md.LatestKeyGeneration()
 	if keyGen != expectedKeyGen {
-		return InvalidKeyGenerationError{md.ID, keyGen}
+		return InvalidKeyGenerationError{md.ID(), keyGen}
 	}
 	info, plainSize, readyBlockData, err :=
 		fbo.blocks.ReadyBlock(
@@ -1004,10 +1004,10 @@ func (fbo *folderBranchOps) initMDLocked(
 	co := newCreateOpForRootDir()
 	md.AddOp(co)
 	md.AddRefBlock(md.data.Dir.BlockInfo)
-	md.UnrefBytes = 0
+	md.SetUnrefBytes(0)
 
 	if err = fbo.putBlockCheckQuota(
-		ctx, md.ID, info.BlockPointer, readyBlockData,
+		ctx, md.ID(), info.BlockPointer, readyBlockData,
 		md.GetTlfHandle().GetCanonicalName()); err != nil {
 		return err
 	}
@@ -1027,7 +1027,7 @@ func (fbo *folderBranchOps) initMDLocked(
 	if fbo.head != (ImmutableRootMetadata{}) {
 		return fmt.Errorf(
 			"%v: Unexpected MD ID during new MD initialization: %v",
-			md.ID, fbo.head.mdID)
+			md.ID(), fbo.head.mdID)
 	}
 	fbo.setNewInitialHeadLocked(ctx, lState,
 		MakeImmutableRootMetadata(md, mdID, fbo.config.Clock().Now()))
@@ -1037,7 +1037,7 @@ func (fbo *folderBranchOps) initMDLocked(
 
 	// cache any new TLF crypt key
 	if tlfCryptKey != nil {
-		err = fbo.config.KeyCache().PutTLFCryptKey(md.ID, keyGen, *tlfCryptKey)
+		err = fbo.config.KeyCache().PutTLFCryptKey(md.ID(), keyGen, *tlfCryptKey)
 		if err != nil {
 			return err
 		}
@@ -1080,11 +1080,11 @@ func (fbo *folderBranchOps) SetInitialHeadFromServer(
 
 	if md.data.Dir.Type != Dir {
 		// Not initialized.
-		return fmt.Errorf("MD with revision=%d not initialized", md.Revision)
+		return fmt.Errorf("MD with revision=%d not initialized", md.Revision())
 	}
 
 	return runUnlessCanceled(ctx, func() error {
-		fb := FolderBranch{md.ID, MasterBranch}
+		fb := FolderBranch{md.ID(), MasterBranch}
 		if fb != fbo.folderBranch {
 			return WrongOpsError{fbo.folderBranch, fb}
 		}
@@ -1117,7 +1117,7 @@ func (fbo *folderBranchOps) SetInitialHeadFromServer(
 				fbo.headLock.Lock(lState)
 				defer fbo.headLock.Unlock(lState)
 				fbo.setLatestMergedRevisionLocked(ctx, lState,
-					mergedMD.Revision, false)
+					mergedMD.Revision(), false)
 			}()
 		}
 
@@ -1151,7 +1151,7 @@ func (fbo *folderBranchOps) SetInitialHeadToNew(
 	}
 
 	var rmd RootMetadata
-	err = updateNewBareRootMetadata(&rmd.BareRootMetadata, id, bh)
+	err = updateNewBareRootMetadata(&rmd.bareMd, id, bh)
 	if err != nil {
 		return err
 	}
@@ -1160,7 +1160,7 @@ func (fbo *folderBranchOps) SetInitialHeadToNew(
 	rmd.tlfHandle = handle
 
 	return runUnlessCanceled(ctx, func() error {
-		fb := FolderBranch{rmd.ID, MasterBranch}
+		fb := FolderBranch{rmd.ID(), MasterBranch}
 		if fb != fbo.folderBranch {
 			return WrongOpsError{fbo.folderBranch, fb}
 		}
@@ -1491,8 +1491,8 @@ func (fbo *folderBranchOps) unembedBlockChanges(
 	md.data.cachedChanges = *changes
 	changes.Info = info
 	changes.Ops = nil
-	md.RefBytes += uint64(info.EncodedSize)
-	md.DiskUsage += uint64(info.EncodedSize)
+	md.AddRefBytes(uint64(info.EncodedSize))
+	md.AddDiskUsage(uint64(info.EncodedSize))
 	return
 }
 
@@ -1903,7 +1903,7 @@ func (fbo *folderBranchOps) finalizeMDWriteLocked(ctx context.Context,
 	doUnmergedPut := true
 	mergedRev := MetadataRevisionUninitialized
 
-	oldPrevRoot := md.PrevRoot
+	oldPrevRoot := md.PrevRoot()
 
 	var mdID MdID
 
@@ -1912,7 +1912,7 @@ func (fbo *folderBranchOps) finalizeMDWriteLocked(ctx context.Context,
 		mdID, err = mdops.Put(ctx, md)
 		if doUnmergedPut = isRevisionConflict(err); doUnmergedPut {
 			fbo.log.CDebugf(ctx, "Conflict: %v", err)
-			mergedRev = md.Revision
+			mergedRev = md.Revision()
 
 			if excl == WithExcl {
 				// If this was caused by an exclusive create, we shouldn't do an
@@ -1942,9 +1942,9 @@ func (fbo *folderBranchOps) finalizeMDWriteLocked(ctx context.Context,
 		if err != nil {
 			return err
 		}
-		bid := md.BID
+		bid := md.BID()
 		fbo.setBranchIDLocked(lState, bid)
-		fbo.cr.Resolve(md.Revision, mergedRev)
+		fbo.cr.Resolve(md.Revision(), mergedRev)
 	} else {
 		fbo.setBranchIDLocked(lState, NullBranchID)
 
@@ -1957,7 +1957,7 @@ func (fbo *folderBranchOps) finalizeMDWriteLocked(ctx context.Context,
 			// we'll always retry if we notice we haven't been successful in clearing
 			// the bit yet. Note that I haven't actually seen this happen but it seems
 			// theoretically possible.
-			defer fbo.config.RekeyQueue().Enqueue(md.ID)
+			defer fbo.config.RekeyQueue().Enqueue(md.ID())
 		}
 	}
 
@@ -1968,11 +1968,11 @@ func (fbo *folderBranchOps) finalizeMDWriteLocked(ctx context.Context,
 		return err
 	}
 
-	rebased := (oldPrevRoot != md.PrevRoot)
+	rebased := (oldPrevRoot != md.PrevRoot())
 	if rebased {
-		bid := md.BID
+		bid := md.BID()
 		fbo.setBranchIDLocked(lState, bid)
-		fbo.cr.Resolve(md.Revision, MetadataRevisionUninitialized)
+		fbo.cr.Resolve(md.Revision(), MetadataRevisionUninitialized)
 	}
 
 	fbo.headLock.Lock(lState)
@@ -1994,7 +1994,7 @@ func (fbo *folderBranchOps) finalizeMDRekeyWriteLocked(ctx context.Context,
 	lState *lockState, md *RootMetadata) (err error) {
 	fbo.mdWriterLock.AssertLocked(lState)
 
-	oldPrevRoot := md.PrevRoot
+	oldPrevRoot := md.PrevRoot()
 
 	// finally, write out the new metadata
 	mdID, err := fbo.config.MDOps().Put(ctx, md)
@@ -2009,17 +2009,17 @@ func (fbo *folderBranchOps) finalizeMDRekeyWriteLocked(ctx context.Context,
 		// the case. we'll queue another rekey just in case. it should
 		// be safe as it's idempotent. we don't want any rekeys present
 		// in unmerged history or that will just make a mess.
-		fbo.config.RekeyQueue().Enqueue(md.ID)
+		fbo.config.RekeyQueue().Enqueue(md.ID())
 		return RekeyConflictError{err}
 	}
 
 	fbo.setBranchIDLocked(lState, NullBranchID)
 
-	rebased := (oldPrevRoot != md.PrevRoot)
+	rebased := (oldPrevRoot != md.PrevRoot())
 	if rebased {
-		bid := md.BID
+		bid := md.BID()
 		fbo.setBranchIDLocked(lState, bid)
-		fbo.cr.Resolve(md.Revision, MetadataRevisionUninitialized)
+		fbo.cr.Resolve(md.Revision(), MetadataRevisionUninitialized)
 	}
 
 	fbo.headLock.Lock(lState)
@@ -2068,7 +2068,7 @@ func (fbo *folderBranchOps) finalizeGCOp(ctx context.Context, gco *gcOp) (
 		}()
 
 		ptrsToDelete, err := fbo.doBlockPuts(
-			ctx, md.ID, md.GetTlfHandle().GetCanonicalName(), *bps)
+			ctx, md.ID(), md.GetTlfHandle().GetCanonicalName(), *bps)
 		if err != nil {
 			return err
 		}
@@ -2078,7 +2078,7 @@ func (fbo *folderBranchOps) finalizeGCOp(ctx context.Context, gco *gcOp) (
 		}
 	}
 
-	oldPrevRoot := md.PrevRoot
+	oldPrevRoot := md.PrevRoot()
 
 	// finally, write out the new metadata
 	mdID, err := fbo.config.MDOps().Put(ctx, md)
@@ -2091,11 +2091,11 @@ func (fbo *folderBranchOps) finalizeGCOp(ctx context.Context, gco *gcOp) (
 	fbo.setBranchIDLocked(lState, NullBranchID)
 	md.swapCachedBlockChanges()
 
-	rebased := (oldPrevRoot != md.PrevRoot)
+	rebased := (oldPrevRoot != md.PrevRoot())
 	if rebased {
-		bid := md.BID
+		bid := md.BID()
 		fbo.setBranchIDLocked(lState, bid)
-		fbo.cr.Resolve(md.Revision, MetadataRevisionUninitialized)
+		fbo.cr.Resolve(md.Revision(), MetadataRevisionUninitialized)
 	}
 
 	fbo.headLock.Lock(lState)
@@ -2130,7 +2130,7 @@ func (fbo *folderBranchOps) syncBlockAndFinalizeLocked(ctx context.Context,
 	}()
 
 	_, err = fbo.doBlockPuts(
-		ctx, md.ID, md.GetTlfHandle().GetCanonicalName(), *bps)
+		ctx, md.ID(), md.GetTlfHandle().GetCanonicalName(), *bps)
 	if err != nil {
 		return DirEntry{}, err
 	}
@@ -2785,7 +2785,7 @@ func (fbo *folderBranchOps) renameLocked(
 		}
 	}()
 
-	_, err = fbo.doBlockPuts(ctx, md.ID, md.GetTlfHandle().GetCanonicalName(), *newBps)
+	_, err = fbo.doBlockPuts(ctx, md.ID(), md.GetTlfHandle().GetCanonicalName(), *newBps)
 	if err != nil {
 		return err
 	}
@@ -3155,7 +3155,7 @@ func (fbo *folderBranchOps) syncLocked(ctx context.Context,
 	// FinishSync call below will take care of that.
 
 	blocksToRemove, err = fbo.doBlockPuts(
-		ctx, md.ID, md.GetTlfHandle().GetCanonicalName(), *bps)
+		ctx, md.ID(), md.GetTlfHandle().GetCanonicalName(), *bps)
 	if err != nil {
 		return true, err
 	}
@@ -3491,7 +3491,7 @@ func (fbo *folderBranchOps) getCurrMDRevisionLocked(lState *lockState) MetadataR
 	fbo.headLock.AssertAnyLocked(lState)
 
 	if fbo.head != (ImmutableRootMetadata{}) {
-		return fbo.head.Revision
+		return fbo.head.Revision()
 	}
 	return MetadataRevisionUninitialized
 }
@@ -3517,13 +3517,13 @@ func (fbo *folderBranchOps) applyMDUpdatesLocked(ctx context.Context,
 	if !fbo.isMasterBranchLocked(lState) {
 		if len(rmds) > 0 {
 			// setHeadLocked takes care of merged case
-			fbo.setLatestMergedRevisionLocked(ctx, lState, rmds[len(rmds)-1].Revision, false)
+			fbo.setLatestMergedRevisionLocked(ctx, lState, rmds[len(rmds)-1].Revision(), false)
 
 			unmergedRev := MetadataRevisionUninitialized
 			if fbo.head != (ImmutableRootMetadata{}) {
-				unmergedRev = fbo.head.Revision
+				unmergedRev = fbo.head.Revision()
 			}
-			fbo.cr.Resolve(unmergedRev, rmds[len(rmds)-1].Revision)
+			fbo.cr.Resolve(unmergedRev, rmds[len(rmds)-1].Revision())
 		}
 		return UnmergedError{}
 	}
@@ -3537,7 +3537,7 @@ func (fbo *folderBranchOps) applyMDUpdatesLocked(ctx context.Context,
 
 	for _, rmd := range rmds {
 		// check that we're applying the expected MD revision
-		if rmd.Revision <= fbo.getCurrMDRevisionLocked(lState) {
+		if rmd.Revision() <= fbo.getCurrMDRevisionLocked(lState) {
 			// Already caught up!
 			continue
 		}
@@ -3584,15 +3584,15 @@ func (fbo *folderBranchOps) undoMDUpdatesLocked(ctx context.Context,
 		// This duplicates a check in
 		// fbo.setHeadPredecessorLocked. TODO: Remove this
 		// duplication.
-		if rmd.Revision != fbo.getCurrMDRevisionLocked(lState) &&
-			rmd.Revision != fbo.getCurrMDRevisionLocked(lState)-1 {
-			return MDUpdateInvertError{rmd.Revision,
+		if rmd.Revision() != fbo.getCurrMDRevisionLocked(lState) &&
+			rmd.Revision() != fbo.getCurrMDRevisionLocked(lState)-1 {
+			return MDUpdateInvertError{rmd.Revision(),
 				fbo.getCurrMDRevisionLocked(lState)}
 		}
 
 		// TODO: Check that the revisions are equal only for
 		// the first iteration.
-		if rmd.Revision < fbo.getCurrMDRevisionLocked(lState) {
+		if rmd.Revision() < fbo.getCurrMDRevisionLocked(lState) {
 			err := fbo.setHeadPredecessorLocked(ctx, lState, rmd)
 			if err != nil {
 				return err
@@ -3773,7 +3773,7 @@ func (fbo *folderBranchOps) undoUnmergedMDUpdatesLocked(
 		if err != nil {
 			return err
 		}
-		fbo.setLatestMergedRevisionLocked(ctx, lState, rmds[0].Revision, true)
+		fbo.setLatestMergedRevisionLocked(ctx, lState, rmds[0].Revision(), true)
 		return nil
 	}()
 	if err != nil {
@@ -3949,7 +3949,7 @@ func (fbo *folderBranchOps) rekeyLocked(ctx context.Context,
 			return nil
 		}
 		// Clear the rekey bit if any.
-		md.Flags &= ^MetadataFlagRekey
+		md.clearRekeyBit()
 		md.clearLastRevision()
 
 	case RekeyIncompleteError:
@@ -4020,7 +4020,7 @@ func (fbo *folderBranchOps) rekeyLocked(ctx context.Context,
 	// cache any new TLF crypt key
 	if tlfCryptKey != nil {
 		keyGen := md.LatestKeyGeneration()
-		err = fbo.config.KeyCache().PutTLFCryptKey(md.ID, keyGen, *tlfCryptKey)
+		err = fbo.config.KeyCache().PutTLFCryptKey(md.ID(), keyGen, *tlfCryptKey)
 		if err != nil {
 			return err
 		}
@@ -4390,7 +4390,7 @@ func (fbo *folderBranchOps) finalizeResolutionLocked(ctx context.Context,
 
 	// Queue a rekey if the bit was set.
 	if md.IsRekeySet() {
-		defer fbo.config.RekeyQueue().Enqueue(md.ID)
+		defer fbo.config.RekeyQueue().Enqueue(md.ID())
 	}
 
 	// Set the head to the new MD.
@@ -4465,27 +4465,27 @@ func (fbo *folderBranchOps) GetUpdateHistory(ctx context.Context,
 
 	if len(rmds) > 0 {
 		rmd := rmds[len(rmds)-1]
-		history.ID = rmd.ID.String()
+		history.ID = rmd.ID().String()
 		history.Name = rmd.GetTlfHandle().GetCanonicalPath()
 	}
 	history.Updates = make([]UpdateSummary, 0, len(rmds))
 	writerNames := make(map[keybase1.UID]string)
 	for _, rmd := range rmds {
-		writer, ok := writerNames[rmd.LastModifyingWriter]
+		writer, ok := writerNames[rmd.LastModifyingWriter()]
 		if !ok {
 			name, err := fbo.config.KBPKI().
-				GetNormalizedUsername(ctx, rmd.LastModifyingWriter)
+				GetNormalizedUsername(ctx, rmd.LastModifyingWriter())
 			if err != nil {
 				return TLFUpdateHistory{}, err
 			}
 			writer = string(name)
-			writerNames[rmd.LastModifyingWriter] = writer
+			writerNames[rmd.LastModifyingWriter()] = writer
 		}
 		updateSummary := UpdateSummary{
-			Revision:  rmd.Revision,
+			Revision:  rmd.Revision(),
 			Date:      time.Unix(0, rmd.data.Dir.Mtime),
 			Writer:    writer,
-			LiveBytes: rmd.DiskUsage,
+			LiveBytes: rmd.DiskUsage(),
 			Ops:       make([]OpSummary, 0, len(rmd.data.Changes.Ops)),
 		}
 		for _, op := range rmd.data.Changes.Ops {

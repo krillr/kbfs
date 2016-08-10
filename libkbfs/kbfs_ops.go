@@ -326,7 +326,7 @@ func (fs *KBFSOpsStandard) GetOrCreateRootNode(
 		}
 	}
 
-	fb := FolderBranch{Tlf: md.ID, Branch: branch}
+	fb := FolderBranch{Tlf: md.ID(), Branch: branch}
 
 	// we might not be able to read the metadata if we aren't in the
 	// key group yet.

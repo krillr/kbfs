@@ -20,7 +20,7 @@ func makeRMDSForTest(t *testing.T, id TlfID, h BareTlfHandle,
 	require.NoError(t, err)
 	rmds.MD.SerializedPrivateMetadata = []byte{0x1}
 	rmds.MD.Revision = revision
-	rmds.MD.LastModifyingWriter = uid
+	rmds.MD.SetLastModifyingWriter(uid)
 	rmds.MD.LastModifyingUser = uid
 	FakeInitialRekey(&rmds.MD, h)
 	rmds.MD.PrevRoot = prevRoot
@@ -95,8 +95,8 @@ func TestMDServerBasics(t *testing.T) {
 	require.NoError(t, err)
 	for i := MetadataRevision(6); i < 41; i++ {
 		rmds := makeRMDSForTest(t, id, h, i, uid, prevRoot)
-		rmds.MD.WFlags |= MetadataFlagUnmerged
-		rmds.MD.BID = bid
+		rmds.MD.SetUnmerged()
+		rmds.MD.SetBranchID(bid)
 		signRMDSForTest(t, config.Codec(), config.Crypto(), rmds)
 		err = mdServer.Put(ctx, rmds)
 		require.NoError(t, err)

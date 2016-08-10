@@ -151,8 +151,8 @@ func testCRChainsFillInWriter(t *testing.T, rmds []*RootMetadata) (
 	}
 	immutableRmds := make([]ImmutableRootMetadata, len(rmds))
 	for i, rmd := range rmds {
-		rmd.LastModifyingWriter = uid
-		rmd.ID = FakeTlfID(1, false)
+		rmd.SetLastModifyingWriter(uid)
+		rmd.SetTlfID(FakeTlfID(1, false))
 		immutableRmds[i] = MakeImmutableRootMetadata(rmd,
 			fakeMdID(1), time.Unix(0, 0))
 	}

@@ -58,10 +58,10 @@ func TestJournalMDOpsBasics(t *testing.T) {
 	require.NoError(t, err)
 
 	var rmd RootMetadata
-	err = updateNewBareRootMetadata(&rmd.BareRootMetadata, id, bh)
+	err = updateNewBareRootMetadata(&rmd.bareMd, id, bh)
 	require.NoError(t, err)
 	rmd.tlfHandle = h
-	rmd.Revision = MetadataRevision(1)
+	rmd.SetRevision(MetadataRevision(1))
 	rekeyDone, _, err := config.KeyManager().Rekey(ctx, &rmd, false)
 	require.NoError(t, err)
 	require.True(t, rekeyDone)
@@ -72,8 +72,8 @@ func TestJournalMDOpsBasics(t *testing.T) {
 
 	// (2) push some new metadata blocks
 	for i := MetadataRevision(2); i < 8; i++ {
-		rmd.Revision = MetadataRevision(i)
-		rmd.PrevRoot = prevRoot
+		rmd.SetRevision(MetadataRevision(i))
+		rmd.SetPrevRoot(prevRoot)
 		mdID, err := mdOps.Put(ctx, &rmd)
 		require.NoError(t, err, "i=%d", i)
 		prevRoot = mdID
@@ -82,7 +82,7 @@ func TestJournalMDOpsBasics(t *testing.T) {
 	head, err := mdOps.GetForTLF(ctx, id)
 	require.NoError(t, err)
 	require.NotNil(t, head)
-	require.Equal(t, MetadataRevision(7), head.Revision)
+	require.Equal(t, MetadataRevision(7), head.Revision())
 
 	head, err = oldMDOps.GetForTLF(ctx, id)
 	require.NoError(t, err)
@@ -94,22 +94,22 @@ func TestJournalMDOpsBasics(t *testing.T) {
 	head, err = mdOps.GetForTLF(ctx, id)
 	require.NoError(t, err)
 	require.NotNil(t, head)
-	require.Equal(t, MetadataRevision(7), head.Revision)
+	require.Equal(t, MetadataRevision(7), head.Revision())
 
 	head, err = oldMDOps.GetForTLF(ctx, id)
 	require.NoError(t, err)
 	require.NotNil(t, head)
-	require.Equal(t, MetadataRevision(7), head.Revision)
+	require.Equal(t, MetadataRevision(7), head.Revision())
 
 	// (3) trigger a conflict
-	rmd.Revision = MetadataRevision(8)
-	rmd.PrevRoot = prevRoot
+	rmd.SetRevision(MetadataRevision(8))
+	rmd.SetPrevRoot(prevRoot)
 	_, err = oldMDOps.Put(ctx, &rmd)
 	require.NoError(t, err)
 
 	for i := MetadataRevision(8); i <= 10; i++ {
-		rmd.Revision = MetadataRevision(i)
-		rmd.PrevRoot = prevRoot
+		rmd.SetRevision(MetadataRevision(i))
+		rmd.SetPrevRoot(prevRoot)
 		mdID, err := mdOps.Put(ctx, &rmd)
 		require.NoError(t, err, "i=%d", i)
 		prevRoot = mdID
@@ -121,33 +121,33 @@ func TestJournalMDOpsBasics(t *testing.T) {
 	head, err = mdOps.GetForTLF(ctx, id)
 	require.NoError(t, err)
 	require.NotNil(t, head)
-	require.Equal(t, MetadataRevision(8), head.Revision)
+	require.Equal(t, MetadataRevision(8), head.Revision())
 
 	head, err = oldMDOps.GetForTLF(ctx, id)
 	require.NoError(t, err)
 	require.NotNil(t, head)
-	require.Equal(t, MetadataRevision(8), head.Revision)
+	require.Equal(t, MetadataRevision(8), head.Revision())
 
 	head, err = mdOps.GetUnmergedForTLF(ctx, id, NullBranchID)
 	require.NoError(t, err)
 	require.NotNil(t, head)
-	require.Equal(t, MetadataRevision(10), head.Revision)
+	require.Equal(t, MetadataRevision(10), head.Revision())
 
 	head, err = oldMDOps.GetUnmergedForTLF(ctx, id, NullBranchID)
 	require.NoError(t, err)
 	require.NotNil(t, head)
-	require.Equal(t, MetadataRevision(10), head.Revision)
+	require.Equal(t, MetadataRevision(10), head.Revision())
 
 	// (4) push some new unmerged metadata blocks linking to the
 	//     middle merged block.
 	var bid BranchID
 	for i := MetadataRevision(11); i < 41; i++ {
-		rmd.Revision = MetadataRevision(i)
-		rmd.PrevRoot = prevRoot
+		rmd.SetRevision(MetadataRevision(i))
+		rmd.SetPrevRoot(prevRoot)
 		mdID, err := mdOps.PutUnmerged(ctx, &rmd)
 		require.NoError(t, err, "i=%d", i)
 		prevRoot = mdID
-		bid = rmd.BID
+		bid = rmd.BID()
 		require.NoError(t, err)
 	}
 
@@ -155,19 +155,19 @@ func TestJournalMDOpsBasics(t *testing.T) {
 	head, err = mdOps.GetUnmergedForTLF(ctx, id, bid)
 	require.NoError(t, err)
 	require.NotNil(t, head)
-	require.Equal(t, MetadataRevision(40), head.Revision)
+	require.Equal(t, MetadataRevision(40), head.Revision())
 
 	head, err = oldMDOps.GetUnmergedForTLF(ctx, id, bid)
 	require.NoError(t, err)
 	require.NotNil(t, head)
-	require.Equal(t, MetadataRevision(10), head.Revision)
+	require.Equal(t, MetadataRevision(10), head.Revision())
 
 	// (6a) try to get unmerged range
 	rmdses, err := mdOps.GetUnmergedRange(ctx, id, bid, 1, 100)
 	require.NoError(t, err)
 	require.Equal(t, 33, len(rmdses))
 	for i := MetadataRevision(8); i < 41; i++ {
-		require.Equal(t, i, rmdses[i-8].Revision)
+		require.Equal(t, i, rmdses[i-8].Revision())
 	}
 
 	// (6b) try to get unmerged range subset.
@@ -175,7 +175,7 @@ func TestJournalMDOpsBasics(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 7, len(rmdses))
 	for i := MetadataRevision(8); i <= 14; i++ {
-		require.Equal(t, i, rmdses[i-8].Revision)
+		require.Equal(t, i, rmdses[i-8].Revision())
 	}
 
 	// (7) prune unmerged
@@ -196,14 +196,14 @@ func TestJournalMDOpsBasics(t *testing.T) {
 	head, err = mdOps.GetForTLF(ctx, id)
 	require.NoError(t, err)
 	require.NotNil(t, head)
-	require.Equal(t, MetadataRevision(8), head.Revision)
+	require.Equal(t, MetadataRevision(8), head.Revision())
 
 	// (11) try to get merged range
 	rmdses, err = mdOps.GetRange(ctx, id, 1, 100)
 	require.NoError(t, err)
 	require.Equal(t, 8, len(rmdses))
 	for i := MetadataRevision(1); i <= 8; i++ {
-		require.Equal(t, i, rmdses[i-1].Revision)
+		require.Equal(t, i, rmdses[i-1].Revision())
 	}
 }
 

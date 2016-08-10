@@ -54,12 +54,12 @@ func mdOpsShutdown(mockCtrl *gomock.Controller, config *ConfigMock) {
 }
 
 func addFakeRMDData(rmd *RootMetadata, h *TlfHandle) {
-	rmd.Revision = MetadataRevision(1)
-	rmd.LastModifyingWriter = h.FirstResolvedWriter()
-	rmd.LastModifyingUser = h.FirstResolvedWriter()
+	rmd.SetRevision(MetadataRevision(1))
+	rmd.SetLastModifyingWriter(h.FirstResolvedWriter())
+	rmd.SetLastModifyingUser(h.FirstResolvedWriter())
 
 	if !h.IsPublic() {
-		FakeInitialRekey(&rmd.BareRootMetadata, h.ToBareHandleOrBust())
+		FakeInitialRekey(&rmd.bareMd, h.ToBareHandleOrBust())
 	}
 }
 
@@ -70,7 +70,7 @@ func newRMD(t *testing.T, config Config, public bool) (
 	h := parseTlfHandleOrBust(t, config, "alice,bob", public)
 	rmd := &RootMetadata{}
 	err := updateNewBareRootMetadata(
-		&rmd.BareRootMetadata, id, h.ToBareHandleOrBust())
+		&rmd.bareMd, id, h.ToBareHandleOrBust())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,8 +83,8 @@ func newRMD(t *testing.T, config Config, public bool) (
 func addFakeRMDSData(rmds *RootMetadataSigned, h *TlfHandle) {
 	rmds.MD.Revision = MetadataRevision(1)
 	rmds.MD.SerializedPrivateMetadata = []byte{1}
-	rmds.MD.LastModifyingWriter = h.FirstResolvedWriter()
-	rmds.MD.LastModifyingUser = h.FirstResolvedWriter()
+	rmds.MD.SetLastModifyingWriter(h.FirstResolvedWriter())
+	rmds.MD.SetLastModifyingUser(h.FirstResolvedWriter())
 	rmds.SigInfo = SignatureInfo{
 		Version:      SigED25519,
 		Signature:    []byte{42},
@@ -141,7 +141,7 @@ func verifyMDForPrivateHelper(
 		Decode(rmds.MD.SerializedPrivateMetadata, gomock.Any()).
 		MinTimes(minTimes).MaxTimes(maxTimes).Return(nil)
 	fakeRMD := RootMetadata{
-		BareRootMetadata: rmds.MD,
+		bareMd: rmds.MD,
 	}
 	expectGetTLFCryptKeyForMDDecryptionAtMostOnce(config, &fakeRMD)
 	var pmd PrivateMetadata
@@ -190,7 +190,7 @@ func TestMDOpsGetForHandlePublicSuccess(t *testing.T) {
 
 	_, rmd2, err := config.MDOps().GetForHandle(ctx, h, Merged)
 	require.NoError(t, err)
-	require.Equal(t, rmds.MD, rmd2.BareRootMetadata)
+	require.Equal(t, rmds.MD, rmd2.bareMd)
 }
 
 func TestMDOpsGetForHandlePrivateSuccess(t *testing.T) {
@@ -205,7 +205,7 @@ func TestMDOpsGetForHandlePrivateSuccess(t *testing.T) {
 
 	_, rmd2, err := config.MDOps().GetForHandle(ctx, h, Merged)
 	require.NoError(t, err)
-	require.Equal(t, rmds.MD, rmd2.BareRootMetadata)
+	require.Equal(t, rmds.MD, rmd2.bareMd)
 }
 
 func TestMDOpsGetForUnresolvedHandlePublicSuccess(t *testing.T) {
@@ -412,7 +412,7 @@ func TestMDOpsGetSuccess(t *testing.T) {
 
 	rmd2, err := config.MDOps().GetForTLF(ctx, rmds.MD.ID)
 	require.NoError(t, err)
-	require.Equal(t, rmds.MD, rmd2.BareRootMetadata)
+	require.Equal(t, rmds.MD, rmd2.bareMd)
 }
 
 func TestMDOpsGetBlankSigFailure(t *testing.T) {
@@ -501,7 +501,7 @@ func testMDOpsGetRangeSuccess(t *testing.T, fromStart bool) {
 	require.NoError(t, err)
 	require.Equal(t, len(rmdses), len(rmds))
 	for i := 0; i < len(rmdses); i++ {
-		require.Equal(t, rmdses[i].MD, rmds[i].BareRootMetadata)
+		require.Equal(t, rmdses[i].MD, rmds[i].bareMd)
 	}
 }
 
@@ -567,7 +567,7 @@ func validatePutPublicRMDS(
 	// Verify LastModifying* fields.
 	_, me, err := config.KBPKI().GetCurrentUserInfo(ctx)
 	require.NoError(t, err)
-	require.Equal(t, me, rmds.MD.LastModifyingWriter)
+	require.Equal(t, me, rmds.MD.LastModifyingWriter())
 	require.Equal(t, me, rmds.MD.LastModifyingUser)
 
 	// Verify signature of WriterMetadata.
@@ -592,10 +592,10 @@ func validatePutPublicRMDS(
 	require.NoError(t, err)
 
 	// Overwrite written fields.
-	expectedRmd.LastModifyingWriter = rmds.MD.LastModifyingWriter
-	expectedRmd.LastModifyingUser = rmds.MD.LastModifyingUser
-	expectedRmd.WriterMetadataSigInfo = rmds.MD.WriterMetadataSigInfo
-	expectedRmd.SerializedPrivateMetadata = rmds.MD.SerializedPrivateMetadata
+	expectedRmd.SetLastModifyingWriter(rmds.MD.LastModifyingWriter())
+	expectedRmd.SetLastModifyingUser(rmds.MD.LastModifyingUser)
+	expectedRmd.SetWriterMetadataSigInfo(rmds.MD.WriterMetadataSigInfo)
+	expectedRmd.SetSerializedPrivateMetadata(rmds.MD.SerializedPrivateMetadata)
 
 	require.Equal(t, expectedRmd, rmds.MD)
 }
@@ -612,7 +612,7 @@ func TestMDOpsPutPublicSuccess(t *testing.T) {
 	h := parseTlfHandleOrBust(t, config, "alice,bob", true)
 
 	var rmd RootMetadata
-	err := updateNewBareRootMetadata(&rmd.BareRootMetadata, id, h.ToBareHandleOrBust())
+	err := updateNewBareRootMetadata(&rmd.bareMd, id, h.ToBareHandleOrBust())
 	require.NoError(t, err)
 	rmd.data = makeFakePrivateMetadataFuture(t).toCurrent()
 	rmd.tlfHandle = h
@@ -621,7 +621,7 @@ func TestMDOpsPutPublicSuccess(t *testing.T) {
 	_, err = config.MDOps().Put(ctx, &rmd)
 
 	rmds := mdServer.getLastRmds()
-	validatePutPublicRMDS(ctx, t, config, &rmd.BareRootMetadata, rmds)
+	validatePutPublicRMDS(ctx, t, config, &rmd.bareMd, rmds)
 }
 
 func TestMDOpsPutPrivateSuccess(t *testing.T) {

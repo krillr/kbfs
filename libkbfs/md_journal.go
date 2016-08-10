@@ -251,9 +251,9 @@ func (j mdJournal) convertToBranch(
 		return err
 	}
 
-	if head.BID != NullBranchID {
+	if head.BID() != NullBranchID {
 		return fmt.Errorf(
-			"convertToBranch called with BID=%s", head.BID)
+			"convertToBranch called with BID=%s", head.BID())
 	}
 
 	earliestRevision, err := j.j.readEarliestRevision()
@@ -261,7 +261,7 @@ func (j mdJournal) convertToBranch(
 		return err
 	}
 
-	latestRevision := head.Revision
+	latestRevision := head.RevisionNumber()
 
 	j.log.CDebugf(
 		ctx, "rewriting MDs %s to %s", earliestRevision, latestRevision)
@@ -287,11 +287,11 @@ func (j mdJournal) convertToBranch(
 		if err != nil {
 			return err
 		}
-		brmd.WFlags |= MetadataFlagUnmerged
-		brmd.BID = bid
+		brmd.SetUnmerged()
+		brmd.SetBranchID(bid)
 
 		// Re-sign the writer metadata.
-		buf, err := j.codec.Encode(brmd.WriterMetadata)
+		buf, err := brmd.GetSerializedWriterMetadata(j.codec)
 		if err != nil {
 			return err
 		}
@@ -300,7 +300,7 @@ func (j mdJournal) convertToBranch(
 		if err != nil {
 			return err
 		}
-		brmd.WriterMetadataSigInfo = sigInfo
+		brmd.SetWriterMetadataSigInfo(sigInfo)
 
 		j.log.CDebugf(ctx, "Old prev root of rev=%s is %s",
 			brmd.Revision, brmd.PrevRoot)
@@ -434,12 +434,12 @@ func (j *mdJournal) put(
 	rmd *RootMetadata, currentUID keybase1.UID,
 	currentVerifyingKey VerifyingKey) (mdID MdID, err error) {
 	j.log.CDebugf(ctx, "Putting MD for TLF=%s with rev=%s bid=%s",
-		rmd.ID, rmd.Revision, rmd.BID)
+		rmd.ID(), rmd.Revision(), rmd.BID())
 	defer func() {
 		if err != nil {
 			j.deferLog.CDebugf(ctx,
 				"Put MD for TLF=%s with rev=%s bid=%s failed with %v",
-				rmd.ID, rmd.Revision, rmd.BID, err)
+				rmd.ID(), rmd.Revision(), rmd.BID(), err)
 		}
 	}()
 
@@ -455,19 +455,19 @@ func (j *mdJournal) put(
 		lastBranchID = j.lastBranchID
 	} else {
 		lastMdID = head.mdID
-		lastBranchID = head.BID
+		lastBranchID = head.BID()
 	}
 
 	mStatus := rmd.MergedStatus()
-	bid := rmd.BID
+	bid := rmd.BID()
 
 	if (mStatus == Unmerged) && (bid == NullBranchID) {
 		j.log.CDebugf(
 			ctx, "Changing branch ID to %s and prev root to %s for MD for TLF=%s with rev=%s",
-			lastBranchID, lastMdID, rmd.ID, rmd.Revision, rmd.BID)
-		rmd.BID = lastBranchID
-		rmd.PrevRoot = lastMdID
-		bid = rmd.BID
+			lastBranchID, lastMdID, rmd.ID(), rmd.Revision(), rmd.BID())
+		rmd.SetBranchID(lastBranchID)
+		rmd.SetPrevRoot(lastMdID)
+		bid = rmd.BID()
 	}
 
 	if (mStatus == Merged) != (bid == NullBranchID) {
@@ -483,8 +483,7 @@ func (j *mdJournal) put(
 	// Check permissions and consistency with head, if it exists.
 	if head != (ImmutableBareRootMetadata{}) {
 		ok, err := isWriterOrValidRekey(
-			j.codec, currentUID, head.BareRootMetadata,
-			&rmd.BareRootMetadata)
+			j.codec, currentUID, head.BareRootMetadata, &rmd.bareMd)
 		if err != nil {
 			return MdID{}, err
 		}
@@ -495,7 +494,7 @@ func (j *mdJournal) put(
 
 		// Consistency checks
 		err = head.CheckValidSuccessorForServer(
-			head.mdID, &rmd.BareRootMetadata)
+			head.mdID, &rmd.bareMd)
 		if err != nil {
 			return MdID{}, err
 		}
@@ -513,7 +512,7 @@ func (j *mdJournal) put(
 		return MdID{}, err
 	}
 
-	err = j.j.append(brmd.Revision, id)
+	err = j.j.append(brmd.RevisionNumber(), id)
 	if err != nil {
 		return MdID{}, err
 	}
@@ -569,9 +568,9 @@ func (j *mdJournal) flushOne(
 	if empty {
 		j.log.CDebugf(ctx,
 			"Journal is now empty; saving last MdID=%s and last Branch ID=%s",
-			earliestID, rmd.BID)
+			earliestID, rmd.BID())
 		j.lastMdID = earliestID
-		j.lastBranchID = rmd.BID
+		j.lastBranchID = rmd.BID()
 	}
 
 	return true, nil
@@ -594,7 +593,7 @@ func (j mdJournal) clear(
 		return err
 	}
 
-	if head.BID != bid {
+	if head.BID() != bid {
 		// Nothing to do.
 		return nil
 	}

@@ -48,7 +48,7 @@ func (p PrivateMetadata) checkValid() error {
 // PrivateMetadata has to be left serialized due to not having the
 // right keys.
 type RootMetadata struct {
-	BareRootMetadata
+	bareMd BareRootMetadata
 
 	// The plaintext, deserialized PrivateMetadata
 	//
@@ -70,13 +70,13 @@ func (md *RootMetadata) Data() *PrivateMetadata {
 
 // IsReadable returns true if the private metadata can be read.
 func (md *RootMetadata) IsReadable() bool {
-	return md.ID.IsPublic() || md.data.Dir.IsInitialized()
+	return md.ID().IsPublic() || md.data.Dir.IsInitialized()
 }
 
 func (md *RootMetadata) clearLastRevision() {
 	md.ClearBlockChanges()
 	// remove the copied flag (if any.)
-	md.Flags &= ^MetadataFlagWriterMetadataCopied
+	md.clearWriterMetadataCopiedBit()
 }
 
 func (md *RootMetadata) deepCopy(codec Codec, copyHandle bool) (*RootMetadata, error) {
@@ -93,6 +93,9 @@ func (md *RootMetadata) deepCopyInPlace(codec Codec, copyHandle bool,
 		return err
 	}
 	if err := CodecUpdate(codec, &newMd.data, md.data); err != nil {
+		return err
+	}
+	if err := CodecUpdate(codec, &newMd.bareMd, md.bareMd); err != nil {
 		return err
 	}
 
@@ -124,20 +127,20 @@ func (md *RootMetadata) MakeSuccessor(
 	if md.IsReadable() && isWriter {
 		newMd.clearLastRevision()
 		// clear the serialized data.
-		newMd.SerializedPrivateMetadata = nil
+		newMd.SetSerializedPrivateMetadata(nil)
 	} else {
 		// if we can't read it it means we're simply setting the rekey bit
 		// and copying the previous data.
-		newMd.Flags |= MetadataFlagRekey
-		newMd.Flags |= MetadataFlagWriterMetadataCopied
+		newMd.SetRekeyBit()
+		newMd.SetWriterMetadataCopiedBit()
 	}
 
-	newMd.PrevRoot = mdID
+	newMd.SetPrevRoot(mdID)
 	// bump revision
-	if md.Revision < MetadataRevisionInitial {
+	if md.Revision() < MetadataRevisionInitial {
 		return nil, errors.New("MD with invalid revision")
 	}
-	newMd.Revision = md.Revision + 1
+	newMd.SetRevision(md.Revision() + 1)
 	return newMd, nil
 }
 
@@ -145,11 +148,10 @@ func (md *RootMetadata) MakeSuccessor(
 // given TLF key bundles.
 func (md *RootMetadata) AddNewKeys(
 	wkb TLFWriterKeyBundle, rkb TLFReaderKeyBundle) error {
-	if md.ID.IsPublic() {
-		return InvalidPublicTLFOperation{md.ID, "AddNewKeys"}
+	if md.ID().IsPublic() {
+		return InvalidPublicTLFOperation{md.ID(), "AddNewKeys"}
 	}
-	md.WKeys = append(md.WKeys, wkb)
-	md.RKeys = append(md.RKeys, rkb)
+	md.bareMd.AddNewKeys(wkb, rkb)
 	return nil
 }
 
@@ -169,13 +171,13 @@ func (md *RootMetadata) MakeBareTlfHandle() (BareTlfHandle, error) {
 		panic(errors.New("MakeBareTlfHandle called when md.tlfHandle exists"))
 	}
 
-	return md.BareRootMetadata.MakeBareTlfHandle()
+	return md.bareMd.MakeBareTlfHandle()
 }
 
 // IsInitialized returns whether or not this RootMetadata has been initialized
 func (md *RootMetadata) IsInitialized() bool {
 	keyGen := md.LatestKeyGeneration()
-	if md.ID.IsPublic() {
+	if md.ID().IsPublic() {
 		return keyGen == PublicKeyGen
 	}
 	// The data is only initialized once we have at least one set of keys
@@ -184,16 +186,16 @@ func (md *RootMetadata) IsInitialized() bool {
 
 // AddRefBlock adds the newly-referenced block to the add block change list.
 func (md *RootMetadata) AddRefBlock(info BlockInfo) {
-	md.RefBytes += uint64(info.EncodedSize)
-	md.DiskUsage += uint64(info.EncodedSize)
+	md.AddRefBytes(uint64(info.EncodedSize))
+	md.AddDiskUsage(uint64(info.EncodedSize))
 	md.data.Changes.AddRefBlock(info.BlockPointer)
 }
 
 // AddUnrefBlock adds the newly-unreferenced block to the add block change list.
 func (md *RootMetadata) AddUnrefBlock(info BlockInfo) {
 	if info.EncodedSize > 0 {
-		md.UnrefBytes += uint64(info.EncodedSize)
-		md.DiskUsage -= uint64(info.EncodedSize)
+		md.AddUnrefBytes(uint64(info.EncodedSize))
+		md.SetDiskUsage(md.DiskUsage() - uint64(info.EncodedSize))
 		md.data.Changes.AddUnrefBlock(info.BlockPointer)
 	}
 }
@@ -201,10 +203,10 @@ func (md *RootMetadata) AddUnrefBlock(info BlockInfo) {
 // AddUpdate adds the newly-updated block to the add block change list.
 func (md *RootMetadata) AddUpdate(oldInfo BlockInfo, newInfo BlockInfo) {
 	if oldInfo.EncodedSize > 0 {
-		md.UnrefBytes += uint64(oldInfo.EncodedSize)
-		md.RefBytes += uint64(newInfo.EncodedSize)
-		md.DiskUsage += uint64(newInfo.EncodedSize)
-		md.DiskUsage -= uint64(oldInfo.EncodedSize)
+		md.AddUnrefBytes(uint64(oldInfo.EncodedSize))
+		md.AddRefBytes(uint64(newInfo.EncodedSize))
+		md.AddDiskUsage(uint64(newInfo.EncodedSize))
+		md.SetDiskUsage(md.DiskUsage() - uint64(oldInfo.EncodedSize))
 		md.data.Changes.AddUpdate(oldInfo.BlockPointer, newInfo.BlockPointer)
 	}
 }
@@ -219,8 +221,8 @@ func (md *RootMetadata) AddOp(o op) {
 // ClearBlockChanges resets the block change lists to empty for this
 // RootMetadata.
 func (md *RootMetadata) ClearBlockChanges() {
-	md.RefBytes = 0
-	md.UnrefBytes = 0
+	md.SetRefBytes(0)
+	md.SetUnrefBytes(0)
 	md.data.Changes.sizeEstimate = 0
 	md.data.Changes.Info = BlockInfo{}
 	md.data.Changes.Ops = nil
@@ -233,23 +235,23 @@ func (md *RootMetadata) updateFromTlfHandle(newHandle *TlfHandle) error {
 	// TODO: Strengthen check, e.g. make sure every writer/reader
 	// in the old handle is also a writer/reader of the new
 	// handle.
-	if md.ID.IsPublic() != newHandle.IsPublic() {
+	if md.ID().IsPublic() != newHandle.IsPublic() {
 		return fmt.Errorf(
 			"Trying to update public=%t rmd with public=%t handle",
-			md.ID.IsPublic(), newHandle.IsPublic())
+			md.ID().IsPublic(), newHandle.IsPublic())
 	}
 
 	if newHandle.IsPublic() {
-		md.Writers = newHandle.ResolvedWriters()
+		md.SetWriters(newHandle.ResolvedWriters())
 	} else {
-		md.UnresolvedReaders = newHandle.UnresolvedReaders()
+		md.SetUnresolvedReaders(newHandle.UnresolvedReaders())
 	}
 
-	md.Extra.UnresolvedWriters = newHandle.UnresolvedWriters()
-	md.ConflictInfo = newHandle.ConflictInfo()
-	md.FinalizedInfo = newHandle.FinalizedInfo()
+	md.SetUnresolvedWriters(newHandle.UnresolvedWriters())
+	md.SetConflictInfo(newHandle.ConflictInfo())
+	md.SetFinalizedInfo(newHandle.FinalizedInfo())
 
-	bareHandle, err := md.makeBareTlfHandle()
+	bareHandle, err := md.bareMd.makeBareTlfHandle()
 	if err != nil {
 		return err
 	}
@@ -299,8 +301,7 @@ type ReadOnlyRootMetadata struct {
 // valid successor to the current one, and returns an error otherwise.
 func (md ReadOnlyRootMetadata) CheckValidSuccessor(
 	currID MdID, nextMd ReadOnlyRootMetadata) error {
-	return md.BareRootMetadata.CheckValidSuccessor(
-		currID, &nextMd.BareRootMetadata)
+	return md.bareMd.CheckValidSuccessor(currID, &nextMd.bareMd)
 }
 
 // ReadOnly makes a ReadOnlyRootMetadata from the current
@@ -466,4 +467,234 @@ func (rmds *RootMetadataSigned) IsValidAndSigned(
 	}
 
 	return nil
+}
+
+// GetTLFCryptKeyParams ...
+func (md *RootMetadata) GetTLFCryptKeyParams(
+	keyGen KeyGen, user keybase1.UID, key CryptPublicKey) (
+	TLFEphemeralPublicKey, EncryptedTLFCryptKeyClientHalf,
+	TLFCryptKeyServerHalfID, bool, error) {
+	return md.bareMd.GetTLFCryptKeyParams(keyGen, user, key)
+}
+
+// LatestKeyGeneration ...
+func (md *RootMetadata) LatestKeyGeneration() KeyGen {
+	return md.bareMd.LatestKeyGeneration()
+}
+
+// TlfID ...
+func (md *RootMetadata) TlfID() TlfID {
+	return md.bareMd.TlfID()
+}
+
+func (md *RootMetadata) writerKID() keybase1.KID {
+	return md.bareMd.writerKID()
+}
+
+// LastModifyingWriter ...
+func (md *RootMetadata) LastModifyingWriter() keybase1.UID {
+	return md.bareMd.LastModifyingWriter()
+}
+
+// RefBytes ...
+func (md *RootMetadata) RefBytes() uint64 {
+	return md.bareMd.RefBytes()
+}
+
+// UnrefBytes ...
+func (md *RootMetadata) UnrefBytes() uint64 {
+	return md.bareMd.UnrefBytes()
+}
+
+// DiskUsage ...
+func (md *RootMetadata) DiskUsage() uint64 {
+	return md.bareMd.DiskUsage()
+}
+
+// SetRefBytes ...
+func (md *RootMetadata) SetRefBytes(refBytes uint64) {
+	md.bareMd.SetRefBytes(refBytes)
+}
+
+// SetUnrefBytes ...
+func (md *RootMetadata) SetUnrefBytes(unrefBytes uint64) {
+	md.bareMd.SetUnrefBytes(unrefBytes)
+}
+
+// SetDiskUsage ...
+func (md *RootMetadata) SetDiskUsage(diskUsage uint64) {
+	md.bareMd.SetDiskUsage(diskUsage)
+}
+
+// AddRefBytes ...
+func (md *RootMetadata) AddRefBytes(refBytes uint64) {
+	md.bareMd.AddRefBytes(refBytes)
+}
+
+// AddUnrefBytes ...
+func (md *RootMetadata) AddUnrefBytes(unrefBytes uint64) {
+	md.bareMd.AddUnrefBytes(unrefBytes)
+}
+
+// AddDiskUsage ...
+func (md *RootMetadata) AddDiskUsage(diskUsage uint64) {
+	md.bareMd.AddDiskUsage(diskUsage)
+}
+
+// ID ...
+func (md *RootMetadata) ID() TlfID {
+	return md.bareMd.TlfID()
+}
+
+// IsWriterMetadataCopiedSet ...
+func (md *RootMetadata) IsWriterMetadataCopiedSet() bool {
+	return md.bareMd.IsWriterMetadataCopiedSet()
+}
+
+// IsRekeySet ...
+func (md *RootMetadata) IsRekeySet() bool {
+	return md.bareMd.IsRekeySet()
+}
+
+// IsUnmergedSet ...
+func (md *RootMetadata) IsUnmergedSet() bool {
+	return md.bareMd.IsUnmergedSet()
+}
+
+// Revision ...
+func (md *RootMetadata) Revision() MetadataRevision {
+	return md.bareMd.RevisionNumber()
+}
+
+// MergedStatus ...
+func (md *RootMetadata) MergedStatus() MergeStatus {
+	return md.bareMd.MergedStatus()
+}
+
+// BID ...
+func (md *RootMetadata) BID() BranchID {
+	return md.bareMd.BID()
+}
+
+// PrevRoot ...
+func (md *RootMetadata) PrevRoot() MdID {
+	return md.bareMd.GetPrevRoot()
+}
+
+func (md *RootMetadata) clearRekeyBit() {
+	md.bareMd.ClearRekeyBit()
+}
+
+func (md *RootMetadata) clearWriterMetadataCopiedBit() {
+	md.bareMd.ClearWriterMetadataCopiedBit()
+}
+
+// SetUnmerged ...
+func (md *RootMetadata) SetUnmerged() {
+	md.bareMd.SetUnmerged()
+}
+
+// SetBranchID ...
+func (md *RootMetadata) SetBranchID(bid BranchID) {
+	md.bareMd.SetBranchID(bid)
+}
+
+// SetPrevRoot ...
+func (md *RootMetadata) SetPrevRoot(mdID MdID) {
+	md.bareMd.SetPrevRoot(mdID)
+}
+
+// GetSerializedPrivateMetadata ...
+func (md *RootMetadata) GetSerializedPrivateMetadata() []byte {
+	return md.bareMd.GetSerializedPrivateMetadata()
+}
+
+// GetSerializedWriterMetadata ...
+func (md *RootMetadata) GetSerializedWriterMetadata(codec Codec) ([]byte, error) {
+	return md.bareMd.GetSerializedWriterMetadata(codec)
+}
+
+// GetWriterMetadataSigInfo ...
+func (md *RootMetadata) GetWriterMetadataSigInfo() SignatureInfo {
+	return md.bareMd.GetWriterMetadataSigInfo()
+}
+
+// SetWriterMetadataSigInfo ...
+func (md *RootMetadata) SetWriterMetadataSigInfo(sigInfo SignatureInfo) {
+	md.bareMd.SetWriterMetadataSigInfo(sigInfo)
+}
+
+// IsFinal ...
+func (md *RootMetadata) IsFinal() bool {
+	return md.bareMd.IsFinal()
+}
+
+// SetSerializedPrivateMetadata ...
+func (md *RootMetadata) SetSerializedPrivateMetadata(spmd []byte) {
+	md.bareMd.SetSerializedPrivateMetadata(spmd)
+}
+
+// SetRekeyBit ...
+func (md *RootMetadata) SetRekeyBit() {
+	md.bareMd.SetRekeyBit()
+}
+
+// SetFinalBit ...
+func (md *RootMetadata) SetFinalBit() {
+	md.bareMd.SetFinalBit()
+}
+
+// SetWriterMetadataCopiedBit ...
+func (md *RootMetadata) SetWriterMetadataCopiedBit() {
+	md.bareMd.SetWriterMetadataCopiedBit()
+}
+
+// SetRevision ...
+func (md *RootMetadata) SetRevision(revision MetadataRevision) {
+	md.bareMd.SetRevision(revision)
+}
+
+// SetWriters ...
+func (md *RootMetadata) SetWriters(writers []keybase1.UID) {
+	md.bareMd.SetWriters(writers)
+}
+
+// SetUnresolvedReaders ...
+func (md *RootMetadata) SetUnresolvedReaders(readers []keybase1.SocialAssertion) {
+	md.bareMd.SetUnresolvedReaders(readers)
+}
+
+// SetUnresolvedWriters ...
+func (md *RootMetadata) SetUnresolvedWriters(writers []keybase1.SocialAssertion) {
+	md.bareMd.SetUnresolvedWriters(writers)
+}
+
+// SetConflictInfo ...
+func (md *RootMetadata) SetConflictInfo(ci *TlfHandleExtension) {
+	md.bareMd.SetConflictInfo(ci)
+}
+
+// SetFinalizedInfo ...
+func (md *RootMetadata) SetFinalizedInfo(fi *TlfHandleExtension) {
+	md.bareMd.SetFinalizedInfo(fi)
+}
+
+// SetLastModifyingWriter ...
+func (md *RootMetadata) SetLastModifyingWriter(user keybase1.UID) {
+	md.bareMd.SetLastModifyingWriter(user)
+}
+
+// SetLastModifyingUser ...
+func (md *RootMetadata) SetLastModifyingUser(user keybase1.UID) {
+	md.bareMd.SetLastModifyingUser(user)
+}
+
+// SetTlfID ...
+func (md *RootMetadata) SetTlfID(tlf TlfID) {
+	md.bareMd.SetTlfID(tlf)
+}
+
+// HasKeyForUser ...
+func (md *RootMetadata) HasKeyForUser(keyGen KeyGen, user keybase1.UID) bool {
+	return md.bareMd.HasKeyForUser(keyGen, user)
 }

@@ -229,7 +229,7 @@ func (km *KeyManagerStandard) updateKeyBundle(ctx context.Context,
 	md *RootMetadata, keyGen KeyGen, wKeys map[keybase1.UID][]CryptPublicKey,
 	rKeys map[keybase1.UID][]CryptPublicKey, ePubKey TLFEphemeralPublicKey,
 	ePrivKey TLFEphemeralPrivateKey, tlfCryptKey TLFCryptKey) error {
-	wkb, rkb, err := md.getTLFKeyBundles(keyGen)
+	wkb, rkb, err := md.bareMd.getTLFKeyBundles(keyGen)
 	if err != nil {
 		return err
 	}
@@ -398,17 +398,17 @@ func (km *KeyManagerStandard) Rekey(ctx context.Context, md *RootMetadata, promp
 	rekeyDone bool, cryptKey *TLFCryptKey, err error) {
 	km.log.CDebugf(ctx, "Rekey %s (prompt for paper key: %t)",
 		md.ID, promptPaper)
-	defer func() { km.deferLog.CDebugf(ctx, "Rekey %s done: %#v", md.ID, err) }()
+	defer func() { km.deferLog.CDebugf(ctx, "Rekey %s done: %#v", md.ID(), err) }()
 
 	currKeyGen := md.LatestKeyGeneration()
-	if md.ID.IsPublic() != (currKeyGen == PublicKeyGen) {
+	if md.ID().IsPublic() != (currKeyGen == PublicKeyGen) {
 		return false, nil, fmt.Errorf(
 			"ID %v has isPublic=%t but currKeyGen is %d (isPublic=%t)",
-			md.ID, md.ID.IsPublic(), currKeyGen, currKeyGen == PublicKeyGen)
+			md.ID(), md.ID().IsPublic(), currKeyGen, currKeyGen == PublicKeyGen)
 	}
 
-	if promptPaper && md.ID.IsPublic() {
-		return false, nil, fmt.Errorf("promptPaper set for public TLF %v", md.ID)
+	if promptPaper && md.ID().IsPublic() {
+		return false, nil, fmt.Errorf("promptPaper set for public TLF %v", md.ID())
 	}
 
 	handle := md.GetTlfHandle()
@@ -424,7 +424,7 @@ func (km *KeyManagerStandard) Rekey(ctx context.Context, md *RootMetadata, promp
 	}
 
 	isWriter := resolvedHandle.IsWriter(uid)
-	if !md.ID.IsPublic() && !isWriter {
+	if !md.ID().IsPublic() && !isWriter {
 		// If I was already a reader, there's nothing more to do
 		if handle.IsReader(uid) {
 			resolvedHandle = handle
@@ -451,7 +451,7 @@ func (km *KeyManagerStandard) Rekey(ctx context.Context, md *RootMetadata, promp
 			resolvedHandle.GetCanonicalPath())
 
 		// Check with the server to see if the handle became a conflict.
-		latestHandle, err := km.config.MDOps().GetLatestHandleForTLF(ctx, md.ID)
+		latestHandle, err := km.config.MDOps().GetLatestHandleForTLF(ctx, md.ID())
 		if latestHandle.ConflictInfo != nil {
 			km.log.CDebugf(ctx, "handle for %s is conflicted",
 				handle.GetCanonicalPath())
@@ -465,11 +465,11 @@ func (km *KeyManagerStandard) Rekey(ctx context.Context, md *RootMetadata, promp
 
 	// For a public TLF there's no rekeying to be done, but we
 	// should still update the writer list.
-	if md.ID.IsPublic() {
+	if md.ID().IsPublic() {
 		if !handleChanged {
 			km.log.CDebugf(ctx,
 				"Skipping rekeying %s (public): handle hasn't changed",
-				md.ID)
+				md.ID())
 			return false, nil, nil
 		}
 		return true, nil, md.updateFromTlfHandle(resolvedHandle)
@@ -509,18 +509,18 @@ func (km *KeyManagerStandard) Rekey(ctx context.Context, md *RootMetadata, promp
 	if !incKeyGen {
 		// See if there is at least one new device in relation to the
 		// current key bundle
-		wkb, rkb, err := md.getTLFKeyBundles(currKeyGen)
+		wkb, rkb, err := md.bareMd.getTLFKeyBundles(currKeyGen)
 		if err != nil {
 			return false, nil, err
 		}
 
-		newWriterUsers = km.usersWithNewDevices(ctx, md.ID, wkb.WKeys, wKeys)
-		newReaderUsers = km.usersWithNewDevices(ctx, md.ID, rkb.RKeys, rKeys)
+		newWriterUsers = km.usersWithNewDevices(ctx, md.ID(), wkb.WKeys, wKeys)
+		newReaderUsers = km.usersWithNewDevices(ctx, md.ID(), rkb.RKeys, rKeys)
 		addNewWriterDevice = len(newWriterUsers) > 0
 		addNewReaderDevice = len(newReaderUsers) > 0
 
-		wRemoved := km.usersWithRemovedDevices(ctx, md.ID, wkb.WKeys, wKeys)
-		rRemoved := km.usersWithRemovedDevices(ctx, md.ID, rkb.RKeys, rKeys)
+		wRemoved := km.usersWithRemovedDevices(ctx, md.ID(), wkb.WKeys, wKeys)
+		rRemoved := km.usersWithRemovedDevices(ctx, md.ID(), rkb.RKeys, rKeys)
 		incKeyGen = len(wRemoved) > 0 || len(rRemoved) > 0
 
 		promotedReaders = make(map[keybase1.UID]bool, len(rRemoved))
@@ -546,7 +546,7 @@ func (km *KeyManagerStandard) Rekey(ctx context.Context, md *RootMetadata, promp
 			newWriterUsers[u] = true
 		}
 
-		if err := km.identifyUIDSets(ctx, md.ID, newWriterUsers, newReaderUsers); err != nil {
+		if err := km.identifyUIDSets(ctx, md.ID(), newWriterUsers, newReaderUsers); err != nil {
 			return false, nil, err
 		}
 	}
@@ -555,7 +555,7 @@ func (km *KeyManagerStandard) Rekey(ctx context.Context, md *RootMetadata, promp
 		!handleChanged {
 		km.log.CDebugf(ctx,
 			"Skipping rekeying %s (private): no new or removed devices, no new keygen, and handle hasn't changed",
-			md.ID)
+			md.ID())
 		return false, nil, nil
 	}
 
@@ -599,7 +599,7 @@ func (km *KeyManagerStandard) Rekey(ctx context.Context, md *RootMetadata, promp
 
 			// If there are readers that need to be promoted to writers, do
 			// that here.
-			wkb, rkb, err := md.getTLFKeyBundles(keyGen)
+			wkb, rkb, err := md.bareMd.getTLFKeyBundles(keyGen)
 			if err != nil {
 				return false, nil, err
 			}
@@ -620,7 +620,7 @@ func (km *KeyManagerStandard) Rekey(ctx context.Context, md *RootMetadata, promp
 	// have to do this here, before adding a new key generation, since
 	// decryptMDPrivateData assumes that the MD is always encrypted
 	// using the latest key gen.
-	if !md.IsReadable() && len(md.SerializedPrivateMetadata) > 0 {
+	if !md.IsReadable() && len(md.GetSerializedPrivateMetadata()) > 0 {
 		if err := decryptMDPrivateData(ctx, km.config, md, md.ReadOnly()); err != nil {
 			return false, nil, err
 		}
@@ -679,7 +679,7 @@ func (km *KeyManagerStandard) Rekey(ctx context.Context, md *RootMetadata, promp
 
 	// Delete server-side key halves for any revoked devices.
 	for keygen := KeyGen(FirstValidKeyGen); keygen <= currKeyGen; keygen++ {
-		wkb, rkb, err := md.getTLFKeyBundles(keygen)
+		wkb, rkb, err := md.bareMd.getTLFKeyBundles(keygen)
 		if err != nil {
 			return false, nil, err
 		}
