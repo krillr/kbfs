@@ -31,7 +31,7 @@ func mdCacheShutdown(mockCtrl *gomock.Controller, config *ConfigMock) {
 func testMdcachePut(t *testing.T, tlf TlfID, rev MetadataRevision,
 	mStatus MergeStatus, bid BranchID, h *TlfHandle, config *ConfigMock) {
 	rmd := &RootMetadata{
-		bareMd: BareRootMetadata{
+		bareMd: &BareRootMetadataV2{
 			WriterMetadata: WriterMetadata{
 				ID:    tlf,
 				WKeys: make(TLFWriterKeyGenerations, 0, 1),

@@ -283,7 +283,7 @@ func getUnmergedMDUpdates(ctx context.Context, config Config, id TlfID,
 func encryptMDPrivateData(
 	ctx context.Context, codec Codec, crypto cryptoPure,
 	signer cryptoSigner, ekg encryptionKeyGetter, me keybase1.UID,
-	rmd ReadOnlyRootMetadata) (*BareRootMetadata, error) {
+	rmd ReadOnlyRootMetadata) (BareRootMetadata, error) {
 	err := rmd.data.checkValid()
 	if err != nil {
 		return nil, err
@@ -302,7 +302,7 @@ func encryptMDPrivateData(
 			if err != nil {
 				return nil, err
 			}
-			brmd.SerializedPrivateMetadata = encodedPrivateMetadata
+			brmd.SetSerializedPrivateMetadata(encodedPrivateMetadata)
 		} else if !brmd.IsWriterMetadataCopiedSet() {
 			// Encrypt and encode the private metadata
 			k, err := ekg.GetTLFCryptKeyForEncryption(ctx, rmd)
@@ -317,13 +317,13 @@ func encryptMDPrivateData(
 			if err != nil {
 				return nil, err
 			}
-			brmd.SerializedPrivateMetadata = encodedEncryptedPrivateMetadata
+			brmd.SetSerializedPrivateMetadata(encodedEncryptedPrivateMetadata)
 		}
 
 		// Sign the writer metadata. This has to be done here,
 		// instead of in signMD, since the MetadataID depends
 		// on it.
-		buf, err := codec.Encode(brmd.WriterMetadata)
+		buf, err := brmd.GetSerializedWriterMetadata(codec)
 		if err != nil {
 			return nil, err
 		}
@@ -332,13 +332,13 @@ func encryptMDPrivateData(
 		if err != nil {
 			return nil, err
 		}
-		brmd.WriterMetadataSigInfo = sigInfo
+		brmd.SetWriterMetadataSigInfo(sigInfo)
 	}
 
 	// Record the last user to modify this metadata
-	brmd.LastModifyingUser = me
+	brmd.SetLastModifyingUser(me)
 
-	return &brmd, nil
+	return brmd, nil
 }
 
 func signMD(

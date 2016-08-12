@@ -397,7 +397,7 @@ func (km *KeyManagerStandard) generateKeyMapForUsers(ctx context.Context, users 
 func (km *KeyManagerStandard) Rekey(ctx context.Context, md *RootMetadata, promptPaper bool) (
 	rekeyDone bool, cryptKey *TLFCryptKey, err error) {
 	km.log.CDebugf(ctx, "Rekey %s (prompt for paper key: %t)",
-		md.ID, promptPaper)
+		md.ID(), promptPaper)
 	defer func() { km.deferLog.CDebugf(ctx, "Rekey %s done: %#v", md.ID(), err) }()
 
 	currKeyGen := md.LatestKeyGeneration()

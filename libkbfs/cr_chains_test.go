@@ -160,7 +160,7 @@ func testCRChainsFillInWriter(t *testing.T, rmds []*RootMetadata) (
 }
 
 func TestCRChainsSingleOp(t *testing.T) {
-	rmd := &RootMetadata{}
+	rmd := &RootMetadata{bareMd: &BareRootMetadataV2{}}
 
 	currPtr, ptrs, revPtrs := testCRInitPtrs(3)
 	rootPtrUnref := ptrs[0]
@@ -190,7 +190,7 @@ func TestCRChainsSingleOp(t *testing.T) {
 }
 
 func TestCRChainsRenameOp(t *testing.T) {
-	rmd := &RootMetadata{}
+	rmd := &RootMetadata{bareMd: &BareRootMetadataV2{}}
 
 	currPtr, ptrs, revPtrs := testCRInitPtrs(3)
 	rootPtrUnref := ptrs[0]
@@ -255,7 +255,7 @@ func TestCRChainsMultiOps(t *testing.T) {
 	expected := make(map[BlockPointer]BlockPointer)
 	expectedRenames := make(map[BlockPointer]renameInfo)
 
-	bigRmd := &RootMetadata{}
+	bigRmd := &RootMetadata{bareMd: &BareRootMetadataV2{}}
 	var multiRmds []*RootMetadata
 
 	// setex root/dir3/file2
@@ -265,7 +265,7 @@ func TestCRChainsMultiOps(t *testing.T) {
 		[]BlockPointer{rootPtrUnref, dir3Unref}, op1)
 	expected[file2Ptr] = file2Ptr // no update to the file ptr
 	bigRmd.AddOp(op1)
-	newRmd := &RootMetadata{}
+	newRmd := &RootMetadata{bareMd: &BareRootMetadataV2{}}
 	newRmd.AddOp(op1)
 	newRmd.data.Dir.BlockPointer = expected[rootPtrUnref]
 	multiRmds = append(multiRmds, newRmd)
@@ -276,7 +276,7 @@ func TestCRChainsMultiOps(t *testing.T) {
 	currPtr = testCRFillOpPtrs(currPtr, expected, revPtrs,
 		[]BlockPointer{expected[rootPtrUnref], dir1Unref}, op2)
 	bigRmd.AddOp(op2)
-	newRmd = &RootMetadata{}
+	newRmd = &RootMetadata{bareMd: &BareRootMetadataV2{}}
 	newRmd.AddOp(op2)
 	newRmd.data.Dir.BlockPointer = expected[rootPtrUnref]
 	multiRmds = append(multiRmds, newRmd)
@@ -290,7 +290,7 @@ func TestCRChainsMultiOps(t *testing.T) {
 		[]BlockPointer{expected[rootPtrUnref], expected[dir1Unref],
 			expected[dir3Unref]}, op3)
 	bigRmd.AddOp(op3)
-	newRmd = &RootMetadata{}
+	newRmd = &RootMetadata{bareMd: &BareRootMetadataV2{}}
 	newRmd.AddOp(op3)
 	newRmd.data.Dir.BlockPointer = expected[rootPtrUnref]
 	multiRmds = append(multiRmds, newRmd)
@@ -302,7 +302,7 @@ func TestCRChainsMultiOps(t *testing.T) {
 		[]BlockPointer{expected[rootPtrUnref], expected[dir1Unref], file4Unref},
 		op4)
 	bigRmd.AddOp(op4)
-	newRmd = &RootMetadata{}
+	newRmd = &RootMetadata{bareMd: &BareRootMetadataV2{}}
 	newRmd.AddOp(op4)
 	newRmd.data.Dir.BlockPointer = expected[rootPtrUnref]
 	multiRmds = append(multiRmds, newRmd)
@@ -314,7 +314,7 @@ func TestCRChainsMultiOps(t *testing.T) {
 		[]BlockPointer{expected[rootPtrUnref], expected[dir1Unref], dir2Unref},
 		op5)
 	bigRmd.AddOp(op5)
-	newRmd = &RootMetadata{}
+	newRmd = &RootMetadata{bareMd: &BareRootMetadataV2{}}
 	newRmd.AddOp(op5)
 	newRmd.data.Dir.BlockPointer = expected[rootPtrUnref]
 	multiRmds = append(multiRmds, newRmd)
@@ -404,7 +404,7 @@ func TestCRChainsCollapse(t *testing.T) {
 	expected := make(map[BlockPointer]BlockPointer)
 	expectedRenames := make(map[BlockPointer]renameInfo)
 
-	rmd := &RootMetadata{}
+	rmd := &RootMetadata{bareMd: &BareRootMetadataV2{}}
 
 	// createfile root/dir1/file2
 	op1, err := newCreateOp(f2, dir1Unref, File)

@@ -275,7 +275,7 @@ func (cr *ConflictResolver) updateCurrInput(ctx context.Context,
 	}()
 
 	if len(unmerged) > 0 {
-		rev := unmerged[len(unmerged)-1].bareMd.Revision
+		rev := unmerged[len(unmerged)-1].bareMd.RevisionNumber()
 		if rev < cr.currInput.unmerged {
 			return fmt.Errorf("Unmerged revision %d is lower than the "+
 				"expected unmerged revision %d", rev, cr.currInput.unmerged)
@@ -283,7 +283,7 @@ func (cr *ConflictResolver) updateCurrInput(ctx context.Context,
 		cr.currInput.unmerged = rev
 	}
 	if len(merged) > 0 {
-		rev := merged[len(merged)-1].bareMd.Revision
+		rev := merged[len(merged)-1].bareMd.RevisionNumber()
 		if rev < cr.currInput.merged {
 			return fmt.Errorf("Merged revision %d is lower than the "+
 				"expected merged revision %d", rev, cr.currInput.merged)
@@ -2176,7 +2176,7 @@ func (cr *ConflictResolver) createResolvedMD(ctx context.Context,
 	lState *lockState, unmergedPaths []path, unmergedChains *crChains,
 	mergedChains *crChains) (*RootMetadata, error) {
 	currMD := mergedChains.mostRecentMD
-	currMDID, err := cr.config.Crypto().MakeMdID(&currMD.bareMd)
+	currMDID, err := cr.config.Crypto().MakeMdID(currMD.bareMd)
 	if err != nil {
 		return nil, err
 	}

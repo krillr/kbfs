@@ -692,7 +692,7 @@ type cryptoPure interface {
 	MakeRandomBranchID() (BranchID, error)
 
 	// MakeMdID computes the MD ID of a RootMetadata object.
-	MakeMdID(md *BareRootMetadata) (MdID, error)
+	MakeMdID(md BareRootMetadata) (MdID, error)
 
 	// MakeMerkleHash computes the hash of a RootMetadataSigned object
 	// for inclusion into the KBFS Merkle tree.
@@ -1446,4 +1446,169 @@ type RekeyQueue interface {
 	Clear()
 	// Waits for all queued rekeys to finish
 	Wait(ctx context.Context) error
+}
+
+// BareRootMetadata is an interface to the MD that is signed by the reader or
+// writer. Unlike RootMetadata, it contains exactly the serializable metadata.
+type BareRootMetadata interface {
+	// TlfID returns the ID of the TLF this BareRootMetadata is for.
+	TlfID() TlfID
+	// LatestKeyGeneration returns the most recent key generation in this
+	// BareRootMetadata, or PublicKeyGen if this TLF is public.
+	LatestKeyGeneration() KeyGen
+	// IsValidRekeyRequest returns true if the current block is a simple rekey wrt
+	// the passed block.
+	IsValidRekeyRequest(codec Codec, prevMd BareRootMetadata, user keybase1.UID) (bool, error)
+	// MergedStatus returns the status of this update -- has it been
+	// merged into the main folder or not?
+	MergedStatus() MergeStatus
+	// IsRekeySet returns true if the rekey bit is set.
+	IsRekeySet() bool
+	// IsWriterMetadataCopiedSet returns true if the bit is set indicating
+	// the writer metadata was copied.
+	IsWriterMetadataCopiedSet() bool
+	// IsFinal returns true if this is the last metadata block for a given
+	// folder.  This is only expected to be set for folder resets.
+	IsFinal() bool
+	// IsWriter returns whether or not the user+device is an authorized writer.
+	IsWriter(user keybase1.UID, deviceKID keybase1.KID) bool
+	// IsReader returns whether or not the user+device is an authorized reader.
+	IsReader(user keybase1.UID, deviceKID keybase1.KID) bool
+	// TODO
+	deepCopy(codec Codec) (BareRootMetadata, error)
+	// TODO
+	deepCopyInPlace(codec Codec, newMd BareRootMetadata) error
+	// CheckValidSuccessor makes sure the given BareRootMetadata is a valid
+	// successor to the current one, and returns an error otherwise.
+	CheckValidSuccessor(currID MdID, nextMd BareRootMetadata) error
+	// CheckValidSuccessorForServer is like CheckValidSuccessor but with
+	// server-specific error messages.
+	CheckValidSuccessorForServer(currID MdID, nextMd BareRootMetadata) error
+	// TODO
+	makeBareTlfHandle() (BareTlfHandle, error)
+	// MakeBareTlfHandle makes a BareTlfHandle for this
+	// BareRootMetadata. Should be used only by servers and MDOps.
+	MakeBareTlfHandle() (BareTlfHandle, error)
+	// writerKID returns the KID of the writer.
+	writerKID() keybase1.KID
+	// VerifyWriterMetadata verifies md's WriterMetadata against md's
+	// WriterMetadataSigInfo, assuming the verifying key there is valid.
+	VerifyWriterMetadata(codec Codec, crypto cryptoPure) error
+	// TlfHandleExtensions returns a list of handle extensions associated with the TLf.
+	TlfHandleExtensions() (extensions []TlfHandleExtension)
+	// TODO
+	getTLFKeyBundles(keyGen KeyGen) (*TLFWriterKeyBundle, *TLFReaderKeyBundle, error)
+	// GetDeviceKIDs returns the KIDs (of CryptPublicKeys) for all known
+	// devices for the given user at the given key generation, if any.
+	// Returns an error if the TLF is public, or if the given key
+	// generation is invalid.
+	GetDeviceKIDs(keyGen KeyGen, user keybase1.UID) ([]keybase1.KID, error)
+	// HasKeyForUser returns whether or not the given user has keys for at
+	// least one device at the given key generation. Returns false if the
+	// TLF is public, or if the given key generation is invalid. Equivalent to:
+	//
+	//   kids, err := GetDeviceKIDs(keyGen, user)
+	//   return (err == nil) && (len(kids) > 0)
+	HasKeyForUser(keyGen KeyGen, user keybase1.UID) bool
+	// GetTLFCryptKeyParams returns all the necessary info to construct
+	// the TLF crypt key for the given key generation, user, and device
+	// (identified by its crypt public key), or false if not found. This
+	// returns an error if the TLF is public.
+	GetTLFCryptKeyParams(keyGen KeyGen, user keybase1.UID, key CryptPublicKey) (
+		TLFEphemeralPublicKey, EncryptedTLFCryptKeyClientHalf,
+		TLFCryptKeyServerHalfID, bool, error)
+	// DeepCopyForServerTest returns a complete copy of this BareRootMetadata
+	// for testing.
+	DeepCopyForServerTest(codec Codec) (BareRootMetadata, error)
+	// IsValidAndSigned verifies the BareRootMetadata given the current
+	// user and device (identified by the KID of the device verifying
+	// key), checks the writer signature, and returns an error if a
+	// problem was found.
+	IsValidAndSigned(codec Codec, crypto cryptoPure,
+		currentUID keybase1.UID, currentVerifyingKey VerifyingKey) error
+	// LastModifyingWriter ...
+	LastModifyingWriter() keybase1.UID
+	// LastModifyingUser ...
+	GetLastModifyingUser() keybase1.UID
+	// RefBytes ...
+	RefBytes() uint64
+	// UnrefBytes ...
+	UnrefBytes() uint64
+	// DiskUsage ...
+	DiskUsage() uint64
+	// SetRefBytes ...
+	SetRefBytes(refBytes uint64)
+	// SetUnrefBytes ...
+	SetUnrefBytes(unrefBytes uint64)
+	// SetDiskUsage ...
+	SetDiskUsage(diskUsage uint64)
+	// AddRefBytes ...
+	AddRefBytes(refBytes uint64)
+	// AddUnrefBytes ...
+	AddUnrefBytes(unrefBytes uint64)
+	// AddDiskUsage ...
+	AddDiskUsage(diskUsage uint64)
+	// RevisionNumber ...
+	RevisionNumber() MetadataRevision
+	// BID ...
+	BID() BranchID
+	// GetPrevRoot ...
+	GetPrevRoot() MdID
+	// ClearRekeyBit ...
+	ClearRekeyBit()
+	// ClearWriterMetadataCopiedBit ...
+	ClearWriterMetadataCopiedBit()
+	// IsUnmergedSet ...
+	IsUnmergedSet() bool
+	// SetUnmerged ...
+	SetUnmerged()
+	// SetBranchID ...
+	SetBranchID(bid BranchID)
+	// SetPrevRoot ...
+	SetPrevRoot(mdID MdID)
+	// GetSerializedPrivateMetadata ...
+	GetSerializedPrivateMetadata() []byte
+	// SetSerializedPrivateMetadata ...
+	SetSerializedPrivateMetadata(spmd []byte)
+	// GetSerializedWriterMetadata ...
+	GetSerializedWriterMetadata(codec Codec) ([]byte, error)
+	// GetWriterMetadataSigInfo ...
+	GetWriterMetadataSigInfo() SignatureInfo
+	// SetWriterMetadataSigInfo ...
+	SetWriterMetadataSigInfo(sigInfo SignatureInfo)
+	// SetLastModifyingWriter ...
+	SetLastModifyingWriter(user keybase1.UID)
+	// SetLastModifyingUser ...
+	SetLastModifyingUser(user keybase1.UID)
+	// SetRekeyBit ...
+	SetRekeyBit()
+	// SetFinalBit ...
+	SetFinalBit()
+	// SetWriterMetadataCopiedBit ...
+	SetWriterMetadataCopiedBit()
+	// SetRevision ...
+	SetRevision(revision MetadataRevision)
+	// AddNewKeys ...
+	AddNewKeys(wkb TLFWriterKeyBundle, rkb TLFReaderKeyBundle)
+	// SetUnresolvedReaders ...
+	SetUnresolvedReaders(readers []keybase1.SocialAssertion)
+	// SetUnresolvedWriters ...
+	SetUnresolvedWriters(writers []keybase1.SocialAssertion)
+	// SetConflictInfo ...
+	SetConflictInfo(ci *TlfHandleExtension)
+	// SetFinalizedInfo ...
+	SetFinalizedInfo(fi *TlfHandleExtension)
+	// SetWriters ...
+	SetWriters(writers []keybase1.UID)
+	// SetTlfID ...
+	SetTlfID(tlf TlfID)
+	// UnsetFinalBit ...
+	UnsetFinalBit()
+	// Version ...
+	Version() MetadataVer
+	// FakeInitialRekey fakes the initial rekey for the given
+	// BareRootMetadata. This is necessary since newly-created
+	// BareRootMetadata objects don't have enough data to build a
+	// TlfHandle from until the first rekey.
+	FakeInitialRekey(h BareTlfHandle)
 }

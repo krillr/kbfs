@@ -42,7 +42,7 @@ func (md *MDOpsStandard) convertVerifyingKeyError(ctx context.Context,
 		writer = libkb.NormalizedUsername("uid: " +
 			rmds.MD.LastModifyingWriter().String())
 	}
-	md.log.CDebugf(ctx, "Unverifiable update for TLF %s", rmds.MD.ID)
+	md.log.CDebugf(ctx, "Unverifiable update for TLF %s", rmds.MD.TlfID())
 	return UnverifiableTlfUpdateError{tlf, writer, err}
 }
 
@@ -53,11 +53,11 @@ func (md *MDOpsStandard) verifyWriterKey(
 		if handle.IsFinal() {
 			err = md.config.KBPKI().HasUnverifiedVerifyingKey(ctx,
 				rmds.MD.LastModifyingWriter(),
-				rmds.MD.WriterMetadataSigInfo.VerifyingKey)
+				rmds.MD.GetWriterMetadataSigInfo().VerifyingKey)
 		} else {
 			err = md.config.KBPKI().HasVerifyingKey(ctx,
 				rmds.MD.LastModifyingWriter(),
-				rmds.MD.WriterMetadataSigInfo.VerifyingKey,
+				rmds.MD.GetWriterMetadataSigInfo().VerifyingKey,
 				rmds.untrustedServerTimestamp)
 		}
 		if err != nil {
@@ -138,16 +138,16 @@ func (md *MDOpsStandard) processMetadata(
 		return ImmutableRootMetadata{}, MDMismatchError{
 			handle.GetCanonicalPath(),
 			fmt.Errorf("Writer MD (id=%s) was written by a non-writer %s",
-				rmds.MD.ID, writer)}
+				rmds.MD.TlfID(), writer)}
 	}
 
 	// Make sure the last user to change the blob is really a valid reader
-	user := rmds.MD.LastModifyingUser
+	user := rmds.MD.GetLastModifyingUser()
 	if !handle.IsReader(user) {
 		return ImmutableRootMetadata{}, MDMismatchError{
 			handle.GetCanonicalPath(),
 			fmt.Errorf("MD (id=%s) was changed by a non-reader %s",
-				rmds.MD.ID, user),
+				rmds.MD.TlfID(), user),
 		}
 	}
 
@@ -193,7 +193,7 @@ func (md *MDOpsStandard) processMetadata(
 		return ImmutableRootMetadata{}, err
 	}
 
-	mdID, err := md.config.Crypto().MakeMdID(&rmd.bareMd)
+	mdID, err := md.config.Crypto().MakeMdID(rmd.bareMd)
 	if err != nil {
 		return ImmutableRootMetadata{}, err
 	}
@@ -261,7 +261,7 @@ func (md *MDOpsStandard) GetForHandle(ctx context.Context, handle *TlfHandle,
 			handle.GetCanonicalPath(),
 			fmt.Errorf(
 				"MD (id=%s) contained unexpected handle path %s (%s -> %s) (%s -> %s)",
-				rmds.MD.ID, mdHandlePath,
+				rmds.MD.TlfID(), mdHandlePath,
 				handle.GetCanonicalPath(),
 				partialResolvedHandle.GetCanonicalPath(),
 				mdHandle.GetCanonicalPath(),
@@ -290,7 +290,7 @@ func (md *MDOpsStandard) processMetadataWithID(ctx context.Context,
 	id TlfID, bid BranchID, handle *TlfHandle, rmds *RootMetadataSigned) (
 	ImmutableRootMetadata, error) {
 	// Make sure the signed-over ID matches
-	if id != rmds.MD.ID {
+	if id != rmds.MD.TlfID() {
 		return ImmutableRootMetadata{}, MDMismatchError{
 			id.String(),
 			fmt.Errorf("MD contained unexpected folder id %s, expected %s",
@@ -416,7 +416,7 @@ func (md *MDOpsStandard) processRange(ctx context.Context, id TlfID,
 
 	// Sort into slice based on revision.
 	irmds := make([]ImmutableRootMetadata, len(rmdses))
-	startRev := rmdses[0].MD.Revision
+	startRev := rmdses[0].MD.RevisionNumber()
 	numExpected := MetadataRevision(len(irmds))
 	for irmd := range irmdChan {
 		i := irmd.Revision() - startRev
@@ -442,7 +442,7 @@ func (md *MDOpsStandard) processRange(ctx context.Context, id TlfID,
 			// processMetadataWithID below, and we want to
 			// do this check before then.
 			err = prevIRMD.bareMd.CheckValidSuccessor(
-				prevIRMD.mdID, &irmd.bareMd)
+				prevIRMD.mdID, irmd.bareMd)
 			if err != nil {
 				return nil, MDMismatchError{
 					irmd.GetTlfHandle().GetCanonicalPath(),
@@ -504,7 +504,7 @@ func (md *MDOpsStandard) put(
 	}
 
 	rmds := RootMetadataSigned{
-		MD: *brmd,
+		MD: brmd,
 	}
 
 	err = signMD(ctx, md.config.Codec(), md.config.Crypto(), &rmds)
@@ -517,7 +517,7 @@ func (md *MDOpsStandard) put(
 		return MdID{}, err
 	}
 
-	mdID, err := md.config.Crypto().MakeMdID(&rmds.MD)
+	mdID, err := md.config.Crypto().MakeMdID(rmds.MD)
 	if err != nil {
 		return MdID{}, err
 	}

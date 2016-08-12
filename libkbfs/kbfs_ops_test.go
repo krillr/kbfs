@@ -243,7 +243,7 @@ func injectNewRMD(t *testing.T, config *ConfigMock) (
 			EncodedSize: 1,
 		},
 	}
-	FakeInitialRekey(&rmd.bareMd, h.ToBareHandleOrBust())
+	FakeInitialRekey(rmd.bareMd, h.ToBareHandleOrBust())
 
 	ops := getOps(config, id)
 	ops.head = MakeImmutableRootMetadata(rmd, fakeMdID(fakeTlfIDByte(id)),
@@ -402,7 +402,7 @@ func (p ptrMatcher) String() string {
 
 func fillInNewMD(t *testing.T, config *ConfigMock, rmd *RootMetadata) {
 	if !rmd.ID().IsPublic() {
-		FakeInitialRekey(&rmd.bareMd, rmd.GetTlfHandle().ToBareHandleOrBust())
+		FakeInitialRekey(rmd.bareMd, rmd.GetTlfHandle().ToBareHandleOrBust())
 	}
 	rootPtr := BlockPointer{
 		ID:      fakeBlockID(42),
@@ -939,7 +939,7 @@ func (s shimMDOps) Put(ctx context.Context, rmd *RootMetadata) (MdID, error) {
 		return MdID{}, MDServerErrorConflictRevision{}
 	}
 	rmd.SetSerializedPrivateMetadata([]byte{0x1})
-	return s.crypto.MakeMdID(&rmd.bareMd)
+	return s.crypto.MakeMdID(rmd.bareMd)
 }
 
 func (s shimMDOps) PutUnmerged(ctx context.Context, rmd *RootMetadata) (MdID, error) {
@@ -947,7 +947,7 @@ func (s shimMDOps) PutUnmerged(ctx context.Context, rmd *RootMetadata) (MdID, er
 		panic("Unexpected PutUnmerged call")
 	}
 	rmd.SetSerializedPrivateMetadata([]byte{0x2})
-	return s.crypto.MakeMdID(&rmd.bareMd)
+	return s.crypto.MakeMdID(rmd.bareMd)
 }
 
 func expectSyncBlockHelper(

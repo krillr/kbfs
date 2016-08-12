@@ -95,9 +95,12 @@ func (md *RootMetadata) deepCopyInPlace(codec Codec, copyHandle bool,
 	if err := CodecUpdate(codec, &newMd.data, md.data); err != nil {
 		return err
 	}
-	if err := CodecUpdate(codec, &newMd.bareMd, md.bareMd); err != nil {
+	// TODO
+	var bareMd BareRootMetadataV2
+	if err := CodecUpdate(codec, &bareMd, md.bareMd); err != nil {
 		return err
 	}
+	newMd.bareMd = &bareMd
 
 	if copyHandle {
 		newMd.tlfHandle = md.tlfHandle.deepCopy()
@@ -301,7 +304,7 @@ type ReadOnlyRootMetadata struct {
 // valid successor to the current one, and returns an error otherwise.
 func (md ReadOnlyRootMetadata) CheckValidSuccessor(
 	currID MdID, nextMd ReadOnlyRootMetadata) error {
-	return md.bareMd.CheckValidSuccessor(currID, &nextMd.bareMd)
+	return md.bareMd.CheckValidSuccessor(currID, nextMd.bareMd)
 }
 
 // ReadOnly makes a ReadOnlyRootMetadata from the current
@@ -344,6 +347,14 @@ func MakeImmutableRootMetadata(
 	return ImmutableRootMetadata{rmd.ReadOnly(), mdID, localTimestamp}
 }
 
+// BareRootMetadataSignedV2 ...
+type BareRootMetadataSignedV2 struct {
+	// signature over the root metadata by the private signing key
+	SigInfo SignatureInfo `codec:",omitempty"`
+	// all the metadata
+	MD BareRootMetadataV2
+}
+
 // RootMetadataSigned is the top-level MD object stored in MD server
 type RootMetadataSigned struct {
 	// signature over the root metadata by the private signing key
@@ -366,20 +377,19 @@ func (rmds *RootMetadataSigned) IsInitialized() bool {
 // assuming the verifying key there is valid.
 func (rmds *RootMetadataSigned) VerifyRootMetadata(
 	codec Codec, crypto cryptoPure) error {
-	md := &rmds.MD
+	md := rmds.MD
 	if rmds.MD.IsFinal() {
-		// Since we're just working with the immediate fields
-		// of RootMetadata, we can get away with a shallow
-		// copy here.
-		mdCopy := rmds.MD
-
+		mdCopy, err := md.deepCopy(codec)
+		if err != nil {
+			return err
+		}
 		// Mask out finalized additions.  These are the only
 		// things allowed to change in the finalized metadata
 		// block.
-		mdCopy.Flags &= ^MetadataFlagFinal
-		mdCopy.Revision--
-		mdCopy.FinalizedInfo = nil
-		md = &mdCopy
+		mdCopy.UnsetFinalBit()
+		mdCopy.SetRevision(md.RevisionNumber() - 1)
+		mdCopy.SetFinalizedInfo(nil)
+		md = mdCopy
 	}
 	// Re-marshal the whole RootMetadata. This is not avoidable
 	// without support from ugorji/codec.
@@ -405,17 +415,7 @@ func (rmds *RootMetadataSigned) MerkleHash(config Config) (MerkleHash, error) {
 // Version returns the metadata version of this MD block, depending on
 // which features it uses.
 func (rmds *RootMetadataSigned) Version() MetadataVer {
-	// Only folders with unresolved assertions orconflict info get the
-	// new version.
-	if len(rmds.MD.Extra.UnresolvedWriters) > 0 ||
-		len(rmds.MD.UnresolvedReaders) > 0 ||
-		rmds.MD.ConflictInfo != nil ||
-		rmds.MD.FinalizedInfo != nil {
-		return InitialExtraMetadataVer
-	}
-	// Let other types of MD objects use the older version since they
-	// are still compatible with older clients.
-	return PreExtraMetadataVer
+	return rmds.MD.Version()
 }
 
 // MakeFinalCopy returns a complete copy of this RootMetadataSigned (but with
@@ -425,15 +425,15 @@ func (rmds *RootMetadataSigned) MakeFinalCopy(config Config) (
 	if rmds.MD.IsFinal() {
 		return nil, MetadataIsFinalError{}
 	}
-	var newRmds RootMetadataSigned
-	err := rmds.MD.deepCopyInPlace(config.Codec(), &newRmds.MD)
+	newRmds := RootMetadataSigned{MD: &BareRootMetadataV2{}}
+	err := rmds.MD.deepCopyInPlace(config.Codec(), newRmds.MD)
 	if err != nil {
 		return nil, err
 	}
 	// Copy the signature.
 	newRmds.SigInfo = rmds.SigInfo.deepCopy()
 	// Set the final flag.
-	newRmds.MD.Flags |= MetadataFlagFinal
+	newRmds.MD.SetFinalBit()
 	// Increment revision but keep the PrevRoot --
 	// We want the client to be able to verify the signature by masking out the final
 	// bit, decrementing the revision, and nulling out the finalized extension info.
@@ -441,7 +441,7 @@ func (rmds *RootMetadataSigned) MakeFinalCopy(config Config) (
 	// creating the final metadata block. Note that PrevRoot isn't being updated. This
 	// is to make verification easier for the client as otherwise it'd need to request
 	// the head revision - 1.
-	newRmds.MD.Revision = rmds.MD.Revision + 1
+	newRmds.MD.SetRevision(rmds.MD.RevisionNumber() + 1)
 	return &newRmds, nil
 }
 

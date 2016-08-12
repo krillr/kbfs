@@ -369,7 +369,7 @@ func (md *MDServerDisk) Put(ctx context.Context, rmds *RootMetadataSigned) error
 		return MDServerError{err}
 	}
 
-	tlfStorage, err := md.getStorage(rmds.MD.ID)
+	tlfStorage, err := md.getStorage(rmds.MD.TlfID())
 	if err != nil {
 		return err
 	}
@@ -426,7 +426,7 @@ func (md *MDServerDisk) getCurrentMergedHeadRevision(
 		return 0, err
 	}
 	if head != nil {
-		rev = head.MD.Revision
+		rev = head.MD.RevisionNumber()
 	}
 	return
 }

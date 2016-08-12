@@ -1151,10 +1151,12 @@ func (fbo *folderBranchOps) SetInitialHeadToNew(
 	}
 
 	var rmd RootMetadata
-	err = updateNewBareRootMetadata(&rmd.bareMd, id, bh)
+	var bareMd BareRootMetadataV2
+	err = updateNewBareRootMetadata(&bareMd, id, bh)
 	if err != nil {
 		return err
 	}
+	rmd.bareMd = &bareMd
 	// Need to keep the TLF handle around long enough to
 	// rekey the metadata for the first time.
 	rmd.tlfHandle = handle

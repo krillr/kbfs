@@ -57,9 +57,11 @@ func TestJournalMDOpsBasics(t *testing.T) {
 	err = jServer.Enable(ctx, id)
 	require.NoError(t, err)
 
-	var rmd RootMetadata
-	err = updateNewBareRootMetadata(&rmd.bareMd, id, bh)
+	var bareMd BareRootMetadataV2
+	err = updateNewBareRootMetadata(&bareMd, id, bh)
 	require.NoError(t, err)
+	var rmd RootMetadata
+	rmd.bareMd = &bareMd
 	rmd.tlfHandle = h
 	rmd.SetRevision(MetadataRevision(1))
 	rekeyDone, _, err := config.KeyManager().Rekey(ctx, &rmd, false)

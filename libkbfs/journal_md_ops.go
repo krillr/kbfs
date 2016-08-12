@@ -107,7 +107,7 @@ func (j journalMDOps) getHeadFromJournal(
 	}
 
 	rmd := RootMetadata{
-		bareMd:    *head.BareRootMetadata,
+		bareMd:    head.BareRootMetadata,
 		tlfHandle: handle,
 	}
 
@@ -173,7 +173,7 @@ func (j journalMDOps) getRangeFromJournal(
 
 	for _, ibrmd := range ibrmds {
 		rmd := RootMetadata{
-			bareMd:    *ibrmd.BareRootMetadata,
+			bareMd:    ibrmd.BareRootMetadata,
 			tlfHandle: handle,
 		}
 
