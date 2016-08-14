@@ -22,7 +22,8 @@ import (
 var runtimeDir = flag.String("runtime-dir", os.Getenv("KEYBASE_RUNTIME_DIR"), "runtime directory")
 var label = flag.String("label", os.Getenv("KEYBASE_LABEL"), "label to help identify if running as a service")
 var mountType = flag.String("mount-type", defaultMountType, "mount type: default, force")
-var version = flag.Bool("version", false, "Print version")
+var version = flag.Bool("version", false, "Print version and exit")
+var unmount = flag.Bool("unmount", false, "Unmount running filesystem and exit")
 var mountFlags = flag.Int64("mount-flags", int64(libdokan.DefaultMountFlags), "Dokan mount flags")
 var dokandll = flag.String("dokan-dll", "", "Absolute path of dokan dll to load")
 
@@ -84,6 +85,14 @@ func start() *libfs.Error {
 	}
 
 	mountpoint := flag.Arg(0)
+
+	if *unmount {
+		if err := dokan.Unmount(mountpoint); err != nil {
+			return libfs.InitError(fmt.Sprint("Unmount failed: ", err))
+		}
+		return nil
+	}
+
 	var mounter libdokan.Mounter
 	if *mountType == "force" {
 		mounter = libdokan.NewForceMounter(mountpoint)
